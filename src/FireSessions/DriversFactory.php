@@ -36,7 +36,7 @@ class DriversFactory
     public function build($driver, array $config, $trueValue, $falseValue)
     {
         // Default driver
-        !in_array($driver, self::$drivers) && $driver = Session::FILES_DRIVER;
+        in_array($driver, array_keys(self::$drivers)) || $driver = Session::FILES_DRIVER;
 
         if (is_string(self::$drivers[$driver])) {
             return new self::$drivers[$driver]($config, $trueValue, $falseValue);

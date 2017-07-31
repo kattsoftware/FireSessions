@@ -34,11 +34,41 @@ $session = new Session($config);
 
 As you can see, the settings are an associative array; they may differ from driver to driver. Below is a list of settings which can be set regardless of the used driver:
 
-| Setting name |  Types accepted   | Default value | Description |
-|----------------------------------|---------|------------------------|----------------|
-| `cookie_name` | string | `ini_get('session.name')` | The name of the cookie that will be send to user's browser. |
-| `expiration` | int |  |         |
+| Setting | Options | Default value | Description |
+|---|---|---|---|
+| `driver` | string | `Session::FILES_DRIVER`, `Session::MEMCACHED_DRIVER`, `Session::REDIS_DRIVER` or _custom_  value | The session driver to be used; can be any of these constants: `Session::FILES_DRIVER`, `Session::MEMCACHED_DRIVER`, `Session::REDIS_DRIVER` or the name of any custom created driver (see below). |
+| `cookie_name` | string (A-Z, a-z, _ or - are accepted) | fs_session | The name of the cookie that will be send to user's browser. |
+| `expiration` | time, in seconds (int) | 7200 (2 hours) | The number of seconds your session should live, before it expires. Using `0` (zero) will make the session to last until browser is closed.  |
+| `match_ip` | `true`/`false` (bool) | `false` | Whether to check for user's IP address to be the same as the one when the session was created. There may be some scenarios where enabling this may lead to issues (e.g. a mobile network losing the signal and reconnecting, getting a different IP address). |
+| `regenerate_time` | time, in seconds (int) | 300 | Specifies how many seconds it will take to regenerate the session ID, replacing the current one with another generated. Setting this configuration to `0` will disable the regeneration of session ID (however, disabling this will increase the chances of possible session fixation attacks). |
+| `destroy_on_regenerate` | `true`/`false` (bool) | `false` | If session ID regeneration is enabled, this tells whether to delete the old session data on session ID regeneration step or to leave it for deletion by PHP's garbage collector. |
 
+### Files driver
+
+The files driver will save your session data files on the server's disk. Below is a list of required settings:
+
+| Setting | Options | Description |
+|---|---|---|
+| `save_path` | Absolute full path of a writable directory (string) | An absolute, full path to a directory where PHP process can write the session files. If it's not set, FileSessions will try to use the `session_save_path()` function return value. |
+
+### Memcached driver
+
+### Redis driver
+
+The Redis driver will save your session data on a [Redis](https://redis.io/) server instance. 
+
+For this driver, the `session_path` setting is a comma-delimited set of connecting parameters names and their values (`param=value`):
+
+```php
+$config['save_path'] = 'host=localhost,port=6379,password=myPassword,database=2,timeout=30,prefix=sessions:';
+
+// host - (required) the hostname of Redis server
+// port - (optional) the Redis server port
+// password - (optional) Redis authentication password
+// database - (optional) which Redis database to use
+// timeout - (optional) Redis connection timeout, in seconds
+// prefix - (optional) How should the session entries be prefixed (if not set, the "cookie_name" setting will be used)
+```
 
 ## Usage
 
@@ -172,7 +202,7 @@ To **set temp data**, you can use the following call:
 $session->setTempdata('quiz_score', 73, 300);
 
 // setting multiple temp data at once
-$session->setFlashdata(array(
+$session->setTempdata(array(
     'quiz_question1' => 10,
     'quiz_question2' => 0
 ), array(
@@ -182,7 +212,7 @@ $session->setFlashdata(array(
 
 // or you can use the same expiration time for all items:
 
-$session->setFlashdata(array(
+$session->setTempdata(array(
     'quiz_question1' => 10,
     'quiz_question2' => 0
 ), 300);
@@ -198,7 +228,16 @@ echo $session->tempdata('quiz_question1');
 var_dump($session->tempdata());
 ```
 
-`TODO`
+To **remove temp data**, you can ue the following call:
+
+```php
+// removes the 'quiz_question1' temp data
+$session->unsetTempdata('quiz_question1');
+
+// or you may set multiple temp data at once:
+
+$session->unsetTempdata('quiz_question1', 'quiz_question2');
+```
 
 ## Other
 

@@ -28,7 +28,7 @@ class Files extends BaseSessionDriver
     private $isNewCreated;
 
     /**
-     * Files constructor.
+     * Files driver constructor.
      *
      * @param array $config
      * @param mixed $trueValue

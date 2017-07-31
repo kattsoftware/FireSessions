@@ -488,7 +488,8 @@ class Session
         if (isset($config['cookie_name'])) {
             ini_set('session.name', (string)$config['cookie_name']);
         } else {
-            $config['cookie_name'] = ini_get('session.name');
+            $config['cookie_name'] = 'fs_session';
+            ini_set('session.name', $config['cookie_name']);
         }
 
         // Cookie path, domain and HTTPs trigger
@@ -505,7 +506,7 @@ class Session
         }
 
         $config['destroy_on_regenerate'] = isset($config['destroy_on_regenerate']) ? (bool)$config['destroy_on_regenerate'] : false;
-        $config['regenerate_time'] = isset($config['regenerate_time']) ? (int)$config['regenerate_time'] : 0;
+        $config['regenerate_time'] = isset($config['regenerate_time']) ? (int)$config['regenerate_time'] : 300;
         $config['match_ip'] = isset($config['match_ip']) ? (bool)$config['match_ip'] : false;
         $config['save_path'] = isset($config['save_path']) ? $config['save_path'] : session_save_path();
 
