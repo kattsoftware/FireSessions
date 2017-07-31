@@ -1,8 +1,8 @@
 ## Introduction
 
-**FireSessions** is a PHP library for managing your site sessions.
+**FireSessions** is a PHP library for managing your project sessions. It lets you store the session data on your local disk, on a Memcached server, or a Redis one; the library can manage 3 types of session variables: user data, flash data and temp data.
 
-## Installing 
+## Installation
 
 You can install FireSessions by using [composer](https://getcomposer.org/):
 
@@ -32,7 +32,13 @@ $config = array(
 $session = new Session($config);
 ```
 
-`TODO`
+As you can see, the settings are an associative array; they may differ from driver to driver. Below is a list of settings which can be set regardless of the used driver:
+
+| Setting name |  Types accepted   | Default value | Description |
+|----------------------------------|---------|------------------------|----------------|
+| `cookie_name` | string | `ini_get('session.name')` | The name of the cookie that will be send to user's browser. |
+| `expiration` | int |  |         |
+
 
 ## Usage
 
@@ -158,14 +164,62 @@ $session->unsetUserdata(array('email_validation', 'firstname_validation'));
 
 Temp data are similar to flash data, except they live for a giving number of seconds, instead of current and next request.
 
+To **set temp data**, you can use the following call:
+
+```php
+// this will create a temp data 'quiz_score', having the value of 72
+// and expiring after 300 seconds
+$session->setTempdata('quiz_score', 73, 300);
+
+// setting multiple temp data at once
+$session->setFlashdata(array(
+    'quiz_question1' => 10,
+    'quiz_question2' => 0
+), array(
+    'quiz_question1' => 300, // quiz_question1 will expire after 300 seconds
+    'quiz_question2' => 350 // quiz_question2 will expire after 350 seconds
+));
+
+// or you can use the same expiration time for all items:
+
+$session->setFlashdata(array(
+    'quiz_question1' => 10,
+    'quiz_question2' => 0
+), 300);
+```
+
+To **get temp data** value, you can use the following call:
+
+```php
+echo $session->tempdata('quiz_question1');
+// outputs 10
+
+// you can also fetch the entire temp data as an associative array:
+var_dump($session->tempdata());
+```
+
 `TODO`
 
 ## Other
 
 You can also check if certain variables exist:
 ```php
-TODO
+// all of the below calls return a boolean value
+$session->hasUserdata('logged_userid'); 
+$session->hasFlashdata('email_validation');
+$session->hasTempdata('quizz_answers');
 ```
+
+If you want to destroy the entire session (which means all types of variables), you can use the following call:
+
+```php
+// Deletes the user, flash and temp data + the session cookie
+$session->destroy();
+```
+
+## Acknowledgments
+
+This library follows the API implementation principles of the [CodeIgniter 3](https://www.codeigniter.com/) Session library, the PHP framework. Big thanks go to their members and contributors!
 
 ## License
 

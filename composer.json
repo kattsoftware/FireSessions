@@ -1,0 +1,17 @@
+{
+  "name": "kattsoftware/firesessions",
+  "description": "PHP Sessions library",
+  "minimum-stability": "stable",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "George Petculescu",
+      "email": "opensource@kattsoftware.com"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "FireSessions\\": "src/FireSessions/"
+    }
+  }
+}
