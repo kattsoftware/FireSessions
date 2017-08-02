@@ -1,7 +1,7 @@
 {
   "name": "kattsoftware/firesessions",
-  "description": "PHP Sessions library",
-  "minimum-stability": "stable",
+  "description": "PHP Sessions management library",
+  "type": "library",
   "license": "MIT",
   "authors": [
     {
@@ -9,6 +9,9 @@
       "email": "opensource@kattsoftware.com"
     }
   ],
+  "require": {
+    "php": ">=5.4.8"
+  },
   "autoload": {
     "psr-4": {
       "FireSessions\\": "src/FireSessions/"

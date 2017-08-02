@@ -306,6 +306,39 @@ class Session
     }
 
     /**
+     * Check if a given userdata exists.
+     *
+     * @param string $index Userdata key to check for
+     * @return bool
+     */
+    public function hasUserdata($index)
+    {
+        return !$this->isFlashdata($index) && !$this->isTempdata($index) && array_key_exists($index, $_SESSION);
+    }
+
+    /**
+     * Check if a given flashdata exists.
+     *
+     * @param string $index Flashdata key to check for
+     * @return bool
+     */
+    public function hasFlashdata($index)
+    {
+        return $this->isFlashdata($index);
+    }
+
+    /**
+     * Check if a given tempdata exists.
+     *
+     * @param string $index Tempdata key to check for
+     * @return bool
+     */
+    public function hasTempdata($index)
+    {
+        return $this->isTempdata($index);
+    }
+
+    /**
      * Preserves flash (or more, if array supplied) to be available on the next request as well.
      *
      * @param $index string|array Flash index(es)
@@ -481,8 +514,11 @@ class Session
      */
     private function processConfiguration(array $config)
     {
+        // Expiration default
+        $config['expiration'] = isset($config['expiration']) ? (int)$config['expiration'] : 7200;
+
         // Cookie lifetime (0 = expire on exiting)
-        $config['cookie_lifetime'] = isset($config['expiration']) ? (int)$config['expiration'] : 0;
+        $config['cookie_lifetime'] = $config['expiration'];
 
         // Cookie name
         if (isset($config['cookie_name'])) {
@@ -498,10 +534,9 @@ class Session
         $config['cookie_secure'] = isset($config['cookie_secure']) ? (bool)$config['cookie_secure'] : false;
 
 
-        if (empty($config['expiration'])) {
+        if ($config['expiration'] === 0) {
             $config['expiration'] = (int)ini_get('session.gc_maxlifetime');
         } else {
-            $config['expiration'] = (int)$config['expiration'];
             ini_set('session.gc_maxlifetime', $config['expiration']);
         }
 

@@ -1,6 +1,6 @@
 ## Introduction
 
-**FireSessions** is a PHP library for managing your project sessions. It lets you store the session data on your local disk, on a Memcached server, or a Redis one; the library can manage 3 types of session variables: user data, flash data and temp data.
+**FireSessions** is a PHP library for managing your project sessions. It lets you store the session data on your local disk, on a Memcached server, or a Redis one; the library can manage 3 types of session variables: user data, flash data and temp data. This library, through all its drivers, supports locking for opened sessions.
 
 ## Installation
 
@@ -11,7 +11,7 @@ composer require kattsoftware/firesessions:^1.0
 ```
 
 ## Configuration
-To start using this library, you must set it up:
+To start using this library, you must set it up, e.g.:
 
 ```php
 <?php
@@ -36,7 +36,7 @@ As you can see, the settings are an associative array; they may differ from driv
 
 | Setting | Options | Default value | Description |
 |---|---|---|---|
-| `driver` | string | `Session::FILES_DRIVER`, `Session::MEMCACHED_DRIVER`, `Session::REDIS_DRIVER` or _custom_  value | The session driver to be used; can be any of these constants: `Session::FILES_DRIVER`, `Session::MEMCACHED_DRIVER`, `Session::REDIS_DRIVER` or the name of any custom created driver (see below). |
+| `driver` | string | `Session::FILES_DRIVER` | The session driver to be used; can be any of these constants: `Session::FILES_DRIVER`, `Session::MEMCACHED_DRIVER`, `Session::REDIS_DRIVER` or the name of any custom created driver (see below). |
 | `cookie_name` | string (A-Z, a-z, _ or - are accepted) | fs_session | The name of the cookie that will be send to user's browser. |
 | `expiration` | time, in seconds (int) | 7200 (2 hours) | The number of seconds your session should live, before it expires. Using `0` (zero) will make the session to last until browser is closed.  |
 | `match_ip` | `true`/`false` (bool) | `false` | Whether to check for user's IP address to be the same as the one when the session was created. There may be some scenarios where enabling this may lead to issues (e.g. a mobile network losing the signal and reconnecting, getting a different IP address). |
@@ -45,19 +45,40 @@ As you can see, the settings are an associative array; they may differ from driv
 
 ### Files driver
 
-The files driver will save your session data files on the server's disk. Below is a list of required settings:
+The files driver will save your session data files on the server's disk. The only setting left here to be set is `save_path`.
 
-| Setting | Options | Description |
-|---|---|---|
-| `save_path` | Absolute full path of a writable directory (string) | An absolute, full path to a directory where PHP process can write the session files. If it's not set, FileSessions will try to use the `session_save_path()` function return value. |
+`save_path` is  an absolute full path of a writable directory, where PHP process can put its session files. If it's not set, FileSessions will try to use the `session_save_path()` function return value.
 
 ### Memcached driver
+
+This driver will save all your session data on a [Memcached](http://php.net/manual/en/book.memcached.php) server instance.
+
+Here, `save_path` is a comma-delimited list of `server:port` pairs:
+
+```php
+$config['save_path'] = 'localhost:11211,192.168.1.1:11211';
+```
+
+You may also add a third parameter (`:weight`), which specifies the priority of a Memcached server:
+
+```php
+// 192.168.0.1:11211 has a higher priority (5), while 192.168.1.1:11211 has the weight 1.
+$config['save_path'] = '192.168.0.1:11211:5,192.168.1.1:11211:1';
+```
+
+Please keep in mind that this may lead to performance gains or loses; it may depend from environment to environment. If you are unsure, do not set the servers' weights.
+
+By default, the Memcached driver will retrieve the local pool servers ([`Memcached::getServerList()`](http://php.net/manual/en/memcached.getserverlist.php)) available. To disable this, you can use the `fetch_pool_servers` setting:
+
+```php
+$config['fetch_pool_servers'] = false;
+```
 
 ### Redis driver
 
 The Redis driver will save your session data on a [Redis](https://redis.io/) server instance. 
 
-For this driver, the `session_path` setting is a comma-delimited set of connecting parameters names and their values (`param=value`):
+For this driver, the `save_path` setting is a comma-delimited set of connecting parameters names and their values (`param=value`):
 
 ```php
 $config['save_path'] = 'host=localhost,port=6379,password=myPassword,database=2,timeout=30,prefix=sessions:';
@@ -67,7 +88,7 @@ $config['save_path'] = 'host=localhost,port=6379,password=myPassword,database=2,
 // password - (optional) Redis authentication password
 // database - (optional) which Redis database to use
 // timeout - (optional) Redis connection timeout, in seconds
-// prefix - (optional) How should the session entries be prefixed (if not set, the "cookie_name" setting will be used)
+// prefix - (optional) Prefix of the entries names (if not set, the "cookie_name" setting will be used)
 ```
 
 ## Usage
@@ -78,7 +99,7 @@ FireSession implements 3 types of session variables: user data, flash data and t
 
 _User data_ represents the collection of variables you set during a whole session lifetime. You can use them to store the ID of logged user, the privileges for a specific user, etc. Simply put, they are the classic `$_SESSION` variables.
 
-To **set a user data variable**, you can use the following call:
+To **set user data variable**, you can use the following call:
 
 ```php
 $session->setUserdata('logged_userid', 1234);
@@ -93,20 +114,17 @@ $session->logged_username = 'myUsername';
 
 $_SESSION['logged_userid'] = 1234;
 $_SESSION['logged_username'] = 'myUsername';
-```
 
-However, the recommendation here is to use the `$session` variables (the `Session` instance), so you will have consistency all over your project.
-
-You can also set more user data at once:
-
-```php
+// you can also set multiple user data at once:
 $session->setUserdata(array(
     'logged_userid' => 1234,
     'logged_username' => 'myUsername'
 ));
 ```
 
-To **get a user data variable**, you can use the following call:
+However, the recommendation here is to use the `$session` variables (the `Session` instance), so you will have consistency all over your project.
+
+To **get user data variable**, you can use the following call:
 
 ```php
 echo $session->userdata('logged_userid'); // outputs 1234
@@ -239,8 +257,6 @@ $session->unsetTempdata('quiz_question1');
 $session->unsetTempdata('quiz_question1', 'quiz_question2');
 ```
 
-## Other
-
 You can also check if certain variables exist:
 ```php
 // all of the below calls return a boolean value
@@ -256,9 +272,70 @@ If you want to destroy the entire session (which means all types of variables), 
 $session->destroy();
 ```
 
+### Using the `SessionFactory`
+
+If, for any reasons, you will have different places in your project where you will need this library, you will need the `Session` instance more than one time. In this case, `new Session($config)` won't work, because the lib was previously created.
+
+In this case, you can use the `SessionFactory` in all places, so you will get always the first instance:
+
+```php
+<?php
+
+use FireSessions\SessionFactory;
+
+// here goes your config
+// $config = array(...);
+
+// A global instance is created
+$session = SessionFactory::getInstance($config);
+
+// ... in another place/file, you may get the already created instance again:
+
+$session = SessionFactory::getInstance();
+```
+
+### Defining your custom drivers
+
+You may create your own session drivers as well! In this case, you will use the `FireSessions\DriversFactory` factory.
+
+To do that, you will need to build a class extending the `FireSessions\BaseSessionDriver` class (this, by its nature, implements [`SessionHandlerInterface`](http://php.net/manual/en/class.sessionhandlerinterface.php)). Besides implementing the `SessionHandlerInterface`'s methods, you will have to implement the additional `acquireLock` and `releaseLock` abstract methods as well.
+
+Don't forget that your custom driver should receive/have the `$config` array, and two additional primitive data types: what should be the true (success) returning value and the false (failure) returning value (see [this](https://wiki.php.net/rfc/session.user.return-value)).
+
+After that, please call the parent constructor like this:
+ 
+```php
+parent::__construct($config, $trueValue, $falseValue);
+```
+
+Once you are there, you can make use of the already available methods, such as `BaseSessionDriver::destroyCookie()` and `BaseSessionDriver::getIp()`.
+ 
+To make your custom driver available for being used, use the following call before instantiating the `Session` client:
+
+```php
+DriversFactory::registerDriver('myDriver', MyDriver::class);
+
+// or you can send the already created custom driver instance:
+// $myDriver = new MyDriver(...);
+DriversFactory::registerDriver('myDriver', $myDriver);
+```
+
+If you are providing the class name as the second parameter (and not an actual instance of the custom driver), then the factory will try to create an instance by calling the class constructor with `$config`, `$trueValue` and `$falseValue` as constructor parameters.
+
+Now you are ready to use your custom driver!
+
+```php
+$config = array(
+    'driver' => 'myDriver',
+    ...
+);
+
+$session = new Session($config);
+```
+
 ## Acknowledgments
 
-This library follows the API implementation principles of the [CodeIgniter 3](https://www.codeigniter.com/) Session library, the PHP framework. Big thanks go to their members and contributors!
+This library closely follows the implementation and the API of the [CodeIgniter 3](https://www.codeigniter.com/) Session library. Big thanks go to their members and contributors!
 
 ## License
 
