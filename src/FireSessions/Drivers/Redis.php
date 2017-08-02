@@ -291,7 +291,7 @@ class Redis extends BaseSessionDriver
             }
 
             if (!$this->redis->setex($newLockKey, 300, 1)) {
-                trigger_error(__CLASS__ . ': Cannot acquire a lock for ' . $newLockKey, E_USER_ERROR);
+                trigger_error(__CLASS__ . ': Cannot acquire the lock ' . $newLockKey, E_USER_ERROR);
 
                 return false;
             }
@@ -302,7 +302,7 @@ class Redis extends BaseSessionDriver
 
         // Last checks
         if ($attempt === 30) {
-            trigger_error(__CLASS__ . ': Cannot acquire a lock for ' . $newLockKey . ' after 30 attempts.', E_USER_ERROR);
+            trigger_error(__CLASS__ . ': Cannot acquire  the lock ' . $newLockKey . ' after 30 attempts.', E_USER_ERROR);
 
             return false;
         }
