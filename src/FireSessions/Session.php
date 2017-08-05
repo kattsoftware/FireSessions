@@ -67,16 +67,8 @@ class Session
             class_alias(SessionHandlerInterface::class, '\SessionHandlerInterface');
         }
 
-        if (version_compare(PHP_VERSION, '7.0.0') >= 0) {
-            $trueValue = true;
-            $falseValue = false;
-        } else {
-            $trueValue = 0;
-            $falseValue = -1;
-        }
-
         /** @var BaseSessionDriver $handler */
-        $handler = $this->driversFactory->build($config['driver'], $config, $trueValue, $falseValue);
+        $handler = $this->driversFactory->build($config['driver'], $config);
 
         if (version_compare(PHP_VERSION, '5.4.0') >= 0) {
             session_set_save_handler($handler, true);

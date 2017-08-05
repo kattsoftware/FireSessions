@@ -28,18 +28,16 @@ class DriversFactory
      *
      * @param string $driver Driver name to instantiate; if doesn't exist, Files driver will be used
      * @param array $config Processed array of settings
-     * @param mixed $trueValue True value according to PHP version
-     * @param mixed $falseValue False value according to PHP version
      *
      * @return BaseSessionDriver Instance of built driver
      */
-    public function build($driver, array $config, $trueValue, $falseValue)
+    public function build($driver, array $config)
     {
         // Default driver
         in_array($driver, array_keys(self::$drivers)) || $driver = Session::FILES_DRIVER;
 
         if (is_string(self::$drivers[$driver])) {
-            return new self::$drivers[$driver]($config, $trueValue, $falseValue);
+            return new self::$drivers[$driver]($config);
         }
 
         return self::$drivers[$driver];

@@ -31,12 +31,10 @@ class Files extends BaseSessionDriver
      * Files driver constructor.
      *
      * @param array $config
-     * @param mixed $trueValue
-     * @param mixed $falseValue
      */
-    public function __construct(array $config, $trueValue, $falseValue)
+    public function __construct(array $config)
     {
-        parent::__construct($config, $trueValue, $falseValue);
+        parent::__construct($config);
 
         if (isset($this->config['save_path'])) {
             $this->config['save_path'] = rtrim($this->config['save_path'], '/\\');

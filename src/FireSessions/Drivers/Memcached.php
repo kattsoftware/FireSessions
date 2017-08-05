@@ -36,12 +36,10 @@ class Memcached extends BaseSessionDriver
      * Memcached driver constructor.
      *
      * @param array $config
-     * @param mixed $trueValue
-     * @param mixed $falseValue
      */
-    public function __construct(array $config, $trueValue, $falseValue)
+    public function __construct(array $config)
     {
-        parent::__construct($config, $trueValue, $falseValue);
+        parent::__construct($config);
 
         if (empty($this->config['save_path'])) {
             trigger_error(__CLASS__ . ': No or invalid "save_path" setting provided.', E_USER_ERROR);

@@ -41,12 +41,10 @@ class Redis extends BaseSessionDriver
      * Redis driver constructor.
      *
      * @param array $config
-     * @param mixed $trueValue
-     * @param mixed $falseValue
      */
-    public function __construct(array $config, $trueValue, $falseValue)
+    public function __construct(array $config)
     {
-        parent::__construct($config, $trueValue, $falseValue);
+        parent::__construct($config);
 
         if (empty($this->config['save_path'])) {
             trigger_error(__CLASS__ . ': No or invalid "save_path" setting found.');
@@ -68,10 +66,10 @@ class Redis extends BaseSessionDriver
             return;
         }
 
-        isset($this->config['save_path']['port']) || $this->config['save_path']['port'] = null;
-        isset($this->config['save_path']['password']) || $this->config['save_path']['password'] = null;
-        isset($this->config['save_path']['database']) || $this->config['save_path']['database'] = null;
-        isset($this->config['save_path']['timeout']) || $this->config['save_path']['timeout'] = null;
+        isset($this->config['save_path']['port']) || ($this->config['save_path']['port'] = null);
+        isset($this->config['save_path']['password']) || ($this->config['save_path']['password'] = null);
+        isset($this->config['save_path']['database']) || ($this->config['save_path']['database'] = null);
+        isset($this->config['save_path']['timeout']) || ($this->config['save_path']['timeout'] = null);
 
         if (isset($this->config['save_path']['prefix'])) {
             $this->keyPrefix = $this->config['save_path']['prefix'];

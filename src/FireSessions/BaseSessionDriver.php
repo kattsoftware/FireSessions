@@ -39,15 +39,18 @@ abstract class BaseSessionDriver implements \SessionHandlerInterface
      * BaseSessionDriver constructor.
      *
      * @param array $config
-     * @param mixed $trueValue
-     * @param mixed $falseValue
      */
-    public function __construct(array $config, $trueValue, $falseValue)
+    public function __construct(array $config)
     {
         $this->config = $config;
 
-        self::$trueValue = $trueValue;
-        self::$falseValue = $falseValue;
+        if (version_compare(PHP_VERSION, '7.0.0') >= 0) {
+            self::$trueValue = true;
+            self::$falseValue = false;
+        } else {
+            self::$trueValue = 0;
+            self::$falseValue = -1;
+        }
     }
 
     /**
