@@ -3,7 +3,7 @@
          convertWarningsToExceptions="true"
          convertNoticesToExceptions="true"
          convertErrorsToExceptions="true"
-         bootstrap="vendor/autoload.php"
+         bootstrap="./tests/bootstrap.php"
 >
     <testsuites>
         <testsuite name="Drivers Test Suite">
