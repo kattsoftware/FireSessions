@@ -52,18 +52,21 @@ class Files extends BaseSessionDriver
      * @param string $name The session name.
      *
      * @return bool
-     * @throws \Exception
      */
     public function open($savePath, $name)
     {
         if (!is_dir($savePath)) {
-            if (!mkdir($savePath, 0700, true)) {
-                throw new \Exception(__CLASS__ . ': "' . $savePath . '" is not a directory, doesn\'t exist or cannot be created.');
+            if (!@mkdir($savePath, 0700, true)) {
+                trigger_error(__CLASS__ . ': "' . $savePath . '" is not a directory, doesn\'t exist or cannot be created.', E_USER_ERROR);
+
+                return self::false();
             }
         }
 
-        if (!is_writable($savePath)) {
-            throw new \Exception(__CLASS__ . ': "' . $savePath . '" is not writable by the PHP executable.');
+        if (!@is_writable($savePath)) {
+            trigger_error(__CLASS__ . ': "' . $savePath . '" is not writable by the PHP executable.', E_USER_ERROR);
+
+            return self::false();
         }
 
         $this->config['save_path'] = $savePath;
@@ -91,7 +94,9 @@ class Files extends BaseSessionDriver
             // First time opening the file, no session_reset() call.
             $this->isNewCreated = !file_exists($fullPath);
 
-            if (($this->fileHandler = fopen($fullPath, 'c+b')) === false) {
+            $this->fileHandler = @fopen($fullPath, 'c+b');
+
+            if ($this->fileHandler === false) {
                 trigger_error(__CLASS__ . ': Unable to open the session file: ' . $fullPath, E_USER_ERROR);
 
                 return self::false();
@@ -99,7 +104,7 @@ class Files extends BaseSessionDriver
 
             // File opened, trying to acquire a lock on it
             if ($this->acquireLock() === false) {
-                trigger_error(__CLASS__ . ': Unable to acquire a lock for ' . $fullPath);
+                trigger_error(__CLASS__ . ': Unable to acquire a lock for ' . $fullPath, E_USER_ERROR);
                 fclose($this->fileHandler);
                 $this->fileHandler = null;
 
@@ -127,7 +132,8 @@ class Files extends BaseSessionDriver
         $fileSize = filesize($fullPath);
 
         if ($fileSize > 0) {
-            if (($buffer = fread($this->fileHandler, $fileSize)) !== false) {
+            $buffer = fread($this->fileHandler, $fileSize);
+            if ($buffer !== false) {
                 $sessionData = $buffer;
             }
         }
@@ -170,7 +176,8 @@ class Files extends BaseSessionDriver
             rewind($this->fileHandler);
         }
 
-        if (($length = strlen($sessionData)) > 0) {
+        $length = strlen($sessionData);
+        if ($length > 0) {
             $result = fwrite($this->fileHandler, $sessionData);
 
             if (!is_int($result)) {

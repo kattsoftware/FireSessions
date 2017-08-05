@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit colors="true"
+         convertWarningsToExceptions="true"
+         convertNoticesToExceptions="true"
+         convertErrorsToExceptions="true"
+         bootstrap="vendor/autoload.php"
+>
+    <testsuites>
+        <testsuite name="Drivers Test Suite">
+            <directory>./tests/FireSessions/Drivers/</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

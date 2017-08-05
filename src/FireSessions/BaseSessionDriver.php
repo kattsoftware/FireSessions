@@ -75,7 +75,7 @@ abstract class BaseSessionDriver implements \SessionHandlerInterface
      */
     protected function destroyCookie()
     {
-        return setcookie(
+        return @setcookie(
             $this->config['cookie_name'],
             null,
             1,
