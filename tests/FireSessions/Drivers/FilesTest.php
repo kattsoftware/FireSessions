@@ -108,7 +108,7 @@ class FilesTest extends PHPUnit_Framework_TestCase
 
         $this->setExpectedException(
             '\PHPUnit_Framework_Error',
-            'FireSessions\Drivers\Files: Unable to open the session file: ' . session_save_path() . DIRECTORY_SEPARATOR . 'fsessionno-permissions'
+            'FireSessions\Drivers\Files: Unable to open the session file: ' . session_save_path() . DIRECTORY_SEPARATOR . 'fs_sessionno-permissions'
         );
 
         $filesDriver->read('no-permissions');
