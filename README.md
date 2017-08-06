@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/kattsoftware/FireSessions.svg?branch=master)](https://travis-ci.org/kattsoftware/FireSessions)
+
 ## Introduction
 
 **FireSessions** is a PHP library for managing your project sessions. It lets you store the session data on your local disk, on a Memcached server, or a Redis one; the library can manage 3 types of session variables: user data, flash data and temp data. This library, through all its drivers, supports locking for opened sessions.
