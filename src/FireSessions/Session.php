@@ -64,7 +64,7 @@ class Session
         );
 
         if (!interface_exists('\SessionHandlerInterface')) {
-            class_alias(SessionHandlerInterface::class, '\SessionHandlerInterface');
+            class_alias('\FireSessions\SessionHandlerInterface', '\SessionHandlerInterface');
         }
 
         /** @var BaseSessionDriver $handler */

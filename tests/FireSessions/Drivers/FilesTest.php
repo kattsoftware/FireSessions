@@ -51,7 +51,7 @@ class FilesTest extends PHPUnit_Framework_TestCase
 
         $filesDriver = new Files($config);
 
-        $this->expectException(PHPUnit_Framework_Error::class);
+        $this->expectException('\PHPUnit_Framework_Error');
         $this->expectExceptionMessage('FireSessions\Drivers\Files: "' . session_save_path() . '" is not a directory, doesn\'t exist or cannot be created.');
 
         $filesDriver->open($config['save_path'], 'fs_session');
@@ -69,7 +69,7 @@ class FilesTest extends PHPUnit_Framework_TestCase
 
         $filesDriver = new Files($config);
 
-        $this->expectException(PHPUnit_Framework_Error::class);
+        $this->expectException('\PHPUnit_Framework_Error');
         $this->expectExceptionMessage('FireSessions\Drivers\Files: "' . session_save_path() . '" is not writable by the PHP executable.');
 
         $filesDriver->open($config['save_path'], 'fs_session');
@@ -102,7 +102,7 @@ class FilesTest extends PHPUnit_Framework_TestCase
 
         $openResult = $filesDriver->open($config['save_path'], 'fs_session');
 
-        $this->expectException(PHPUnit_Framework_Error::class);
+        $this->expectException('\PHPUnit_Framework_Error');
         $this->expectExceptionMessage('FireSessions\Drivers\Files: Unable to open the session file: ' . session_save_path() . DIRECTORY_SEPARATOR);
 
         $filesDriver->read('no-permissions');
@@ -142,7 +142,7 @@ class FilesTest extends PHPUnit_Framework_TestCase
 
         self::$fs->getChild('fs_session1234')->chmod(0000);
 
-        $this->expectException(PHPUnit_Framework_Error::class);
+        $this->expectException('\PHPUnit_Framework_Error');
         $this->expectExceptionMessage('FireSessions\Drivers\Files: Unable to open the session file: ' . session_save_path() . DIRECTORY_SEPARATOR);
 
         $filesDriver->write('no-permissions', 'Session-data-2');
@@ -210,7 +210,7 @@ class FilesTest extends PHPUnit_Framework_TestCase
         $openResult = $filesDriver->open($config['save_path'], 'fs_session');
         $readResult = $filesDriver->read('1234');
 
-        $this->assertInstanceOf(org\bovigo\vfs\vfsStreamFile::class, self::$fs->getChild('fs_session1234'));
+        $this->assertInstanceOf('org\bovigo\vfs\vfsStreamFile', self::$fs->getChild('fs_session1234'));
 
         $filesDriver->destroy('1234');
 

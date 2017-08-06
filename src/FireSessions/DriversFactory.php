@@ -2,10 +2,6 @@
 
 namespace FireSessions;
 
-use FireSessions\Drivers\Files;
-use FireSessions\Drivers\Memcached;
-use FireSessions\Drivers\Redis;
-
 /**
  * Drivers factory
  *
@@ -18,9 +14,9 @@ class DriversFactory
      * @var array Associative array of driver names and their corresponding classes (or created instances)
      */
     private static $drivers = array(
-        Session::FILES_DRIVER => Files::class,
-        Session::REDIS_DRIVER => Redis::class,
-        Session::MEMCACHED_DRIVER => Memcached::class,
+        Session::FILES_DRIVER => '\FireSessions\Drivers\Files',
+        Session::REDIS_DRIVER => '\FireSessions\Drivers\Redis',
+        Session::MEMCACHED_DRIVER => '\FireSessions\Drivers\Memcached',
     );
 
     /**
@@ -52,7 +48,7 @@ class DriversFactory
      */
     public static function registerDriver($name, $class)
     {
-        if (is_subclass_of($class, BaseSessionDriver::class)) {
+        if (is_subclass_of($class, '\FireSessions\BaseSessionDriver')) {
             self::$drivers[$name] = $class;
 
             return true;
