@@ -19,9 +19,9 @@ class Session
     const REDIS_DRIVER = 'Redis';
 
     /**
-     * Internal session variables
+     * @var array Internal session variables
      */
-    const RESERVED_SESSION_KEYS = array(
+    private static $reservedSessionKeys = array(
         '_temp_bag',
         '_flashes_bag',
         '_last_regenerate',
@@ -172,7 +172,7 @@ class Session
     public function userdata($index = null)
     {
         if ($index !== null) {
-            return isset($_SESSION[$index]) && !in_array($index, self::RESERVED_SESSION_KEYS)
+            return isset($_SESSION[$index]) && !in_array($index, self::$reservedSessionKeys)
                 ? $_SESSION[$index]
                 : null;
         }
@@ -180,7 +180,7 @@ class Session
         $allUserdata = $_SESSION;
 
         $exceptions = array_merge(
-            self::RESERVED_SESSION_KEYS,
+            self::$reservedSessionKeys,
             array_keys($_SESSION['_temp_bag']),
             array_keys($_SESSION['_flashes_bag'])
         );
