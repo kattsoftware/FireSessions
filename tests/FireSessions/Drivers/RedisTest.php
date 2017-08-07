@@ -2,7 +2,7 @@
 
 namespace FireSessions\Tests\Drivers;
 
-use FireSessions\Drivers\Redis;
+use FireSessions\Drivers\Redis as RedisDriver;
 
 class RedisTest extends \PHPUnit_Framework_TestCase
 {
@@ -42,7 +42,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
             'FireSessions\Drivers\Redis: No or invalid "save_path" setting found.'
         );
 
-        new Redis($config);
+        new RedisDriver($config);
     }
 
     public function testCreatingTheDriverWhenSavePathDoesNotContainHost()
@@ -56,7 +56,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
             'FireSessions\Drivers\Redis: No or invalid "host" setting in the "save_path" config.'
         );
 
-        new Redis($config);
+        new RedisDriver($config);
     }
 
     public function testOpenWhenRedisConnectFails()
@@ -67,7 +67,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
             'save_path' => 'host=localhost,port=1234,timeout=30'
         );
 
-        $redisDriver = new Redis($config);
+        $redisDriver = new RedisDriver($config);
 
         $redisDriver->instantiateRedis($this->redisMock);
 
@@ -92,7 +92,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
             'save_path' => 'host=localhost,port=1234,timeout=30,password=wrongPass'
         );
 
-        $redisDriver = new Redis($config);
+        $redisDriver = new RedisDriver($config);
 
         $redisDriver->instantiateRedis($this->redisMock);
 
@@ -122,7 +122,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
             'save_path' => 'host=localhost,port=1234,timeout=30,password=pass,database=-1'
         );
 
-        $redisDriver = new Redis($config);
+        $redisDriver = new RedisDriver($config);
 
         $redisDriver->instantiateRedis($this->redisMock);
 
@@ -157,7 +157,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
             'save_path' => 'host=localhost,port=1234,timeout=30,password=pass,database=1'
         );
 
-        $redisDriver = new Redis($config);
+        $redisDriver = new RedisDriver($config);
 
         $redisDriver->instantiateRedis($this->redisMock);
 
@@ -191,7 +191,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
 
         $lockKey = 'fs_session:1234:lock';
 
-        $redisDriver = new Redis($config);
+        $redisDriver = new RedisDriver($config);
 
         $redisDriver->instantiateRedis($this->redisMock);
 
@@ -222,7 +222,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
             'save_path' => 'host=localhost,port=1234,timeout=30'
         );
 
-        $redisDriver = new Redis($config);
+        $redisDriver = new RedisDriver($config);
 
         $this->assertEquals(self::$false, $redisDriver->read('1234'));
     }
@@ -238,7 +238,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
         $lockKey = 'fs_session:1234:lock';
         $key = 'fs_session:1234';
 
-        $redisDriver = new Redis($config);
+        $redisDriver = new RedisDriver($config);
 
         $redisDriver->instantiateRedis($this->redisMock);
 
@@ -275,7 +275,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
         $lockKey = 'fs_session:1234:lock';
         $key = 'fs_session:1234';
 
-        $redisDriver = new Redis($config);
+        $redisDriver = new RedisDriver($config);
 
         $redisDriver->instantiateRedis($this->redisMock);
 
@@ -309,7 +309,7 @@ class RedisTest extends \PHPUnit_Framework_TestCase
             'save_path' => 'host=localhost,port=1234,timeout=30'
         );
 
-        $redisDriver = new Redis($config);
+        $redisDriver = new RedisDriver($config);
 
         $redisDriver->instantiateRedis($this->redisMock);
 
