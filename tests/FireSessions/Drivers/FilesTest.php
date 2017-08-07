@@ -1,17 +1,19 @@
 <?php
 
+namespace FireSessions\Tests\Drivers;
+
 use FireSessions\Drivers\Files;
 use FireSessions\Session;
 use org\bovigo\vfs\vfsStream;
 
-class FilesTest extends PHPUnit_Framework_TestCase
+class FilesTest extends \PHPUnit_Framework_TestCase
 {
     private static $true;
 
     private static $false;
 
     /**
-     * @var org\bovigo\vfs\vfsStreamDirectory
+     * @var \org\bovigo\vfs\vfsStreamDirectory
      */
     private static $fs;
 
@@ -226,5 +228,35 @@ class FilesTest extends PHPUnit_Framework_TestCase
 
         $this->assertEquals(self::$true, $openResult);
         $this->assertEquals('SESSION-DATA', $readResult);
+    }
+
+    public function testGcOnSuccess()
+    {
+        $config = array(
+            'driver' => Session::FILES_DRIVER,
+            'cookie_name' => 'fs_session',
+            'cookie_path' => '/',
+            'cookie_domain' => '',
+            'cookie_secure' => true,
+            'save_path' => session_save_path(),
+            'match_ip' => false,
+            'sid_regexp' => '[0-9a-f]{32}',
+        );
+
+        $filesDriver = new Files($config);
+
+        vfsStream::newFile('fs_session' . md5('1'), 0666)->lastModified(time() - 300)->at(self::$fs);
+        vfsStream::newFile('fs_session' . md5('2'), 0666)->lastModified(time() - 350)->at(self::$fs);
+        vfsStream::newFile('fs_session' . md5('3'), 0666)->lastModified(time() - 100)->at(self::$fs);
+
+        $this->assertInstanceOf('org\bovigo\vfs\vfsStreamFile', self::$fs->getChild('fs_session' . md5('1')));
+        $this->assertInstanceOf('org\bovigo\vfs\vfsStreamFile', self::$fs->getChild('fs_session' . md5('2')));
+        $this->assertInstanceOf('org\bovigo\vfs\vfsStreamFile', self::$fs->getChild('fs_session' . md5('3')));
+
+        $filesDriver->gc(250);
+
+        $this->assertNull(self::$fs->getChild('fs_session' . md5('1')));
+        $this->assertNull(self::$fs->getChild('fs_session' . md5('2')));
+        $this->assertInstanceOf('org\bovigo\vfs\vfsStreamFile', self::$fs->getChild('fs_session' . md5('3')));
     }
 }

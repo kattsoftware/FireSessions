@@ -47,7 +47,7 @@ class Redis extends BaseSessionDriver
         parent::__construct($config);
 
         if (empty($this->config['save_path'])) {
-            trigger_error(__CLASS__ . ': No or invalid "save_path" setting found.');
+            trigger_error(__CLASS__ . ': No or invalid "save_path" setting found.', E_USER_ERROR);
 
             return;
         }
@@ -61,7 +61,7 @@ class Redis extends BaseSessionDriver
         }
 
         if (!isset($this->config['save_path']['host'])) {
-            trigger_error(__CLASS__ . ': No or invalid "host" setting in the "save_path" config.');
+            trigger_error(__CLASS__ . ': No or invalid "host" setting in the "save_path" config.', E_USER_ERROR);
 
             return;
         }
@@ -80,8 +80,6 @@ class Redis extends BaseSessionDriver
         if ($this->config['match_ip'] === true) {
             $this->keyPrefix .= $this->getIp() . ':';
         }
-
-
     }
 
     /**
@@ -94,7 +92,7 @@ class Redis extends BaseSessionDriver
      */
     public function open($savePath, $name)
     {
-        $redis = new \Redis();
+        $redis = $this->instantiateRedis();
 
         if (!$redis->connect(
             $this->config['save_path']['host'],
@@ -121,7 +119,6 @@ class Redis extends BaseSessionDriver
             return self::false();
         }
 
-        $this->redis = $redis;
         return self::true();
     }
 
@@ -201,7 +198,7 @@ class Redis extends BaseSessionDriver
     }
 
     /**
-     * Closew the session
+     * Close the session
      *
      * @link http://php.net/manual/en/sessionhandlerinterface.close.php
      * @return bool
@@ -264,6 +261,25 @@ class Redis extends BaseSessionDriver
     }
 
     /**
+     * Instantiate the Redis.
+     *
+     * @param string|\Redis $class An extending instance of \Redis or a fully qualified class name
+     * @return \Redis Redis instance
+     */
+    public function instantiateRedis($class = '\Redis')
+    {
+        if ($this->redis === null) {
+            if ($class instanceof \Redis) {
+                $this->redis = $class;
+            } else {
+                $this->redis = new $class;
+            }
+        }
+
+        return $this->redis;
+    }
+
+    /**
      * Lock acquiring for this implementation.
      *
      * @param string $sessionId If required, this can be the session ID
@@ -306,7 +322,7 @@ class Redis extends BaseSessionDriver
         }
 
         if ($ttl === -1) {
-            trigger_error(__CLASS__ . ': No TTL for ' . $newLockKey . ' lock. Overriding...');
+            trigger_error(__CLASS__ . ': No TTL for ' . $newLockKey . ' lock. Overriding...', E_USER_NOTICE);
         }
 
         $this->lockAcquired = true;
