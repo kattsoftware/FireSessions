@@ -208,8 +208,7 @@ class Redis extends BaseSessionDriver
         if ($this->redis !== null) {
             try {
                 if ($this->redis->ping() === '+PONG') {
-                    $this->releaseLock();
-                    if ($this->redis->close() === false) {
+                    if (!$this->releaseLock() || $this->redis->close() === false) {
                         return self::false();
                     }
                 }
@@ -241,6 +240,7 @@ class Redis extends BaseSessionDriver
             }
 
             $this->destroyCookie();
+
             return self::true();
         }
 
@@ -333,7 +333,7 @@ class Redis extends BaseSessionDriver
     /**
      * Releases the obtained lock over a session instance.
      *
-     * @return true whether the unlocking succeeded or not
+     * @return bool Whether the unlocking succeeded or not
      */
     protected function releaseLock()
     {

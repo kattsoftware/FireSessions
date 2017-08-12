@@ -64,7 +64,7 @@ abstract class BaseSessionDriver implements \SessionHandlerInterface
     /**
      * Releases the obtained lock over a session instance.
      *
-     * @return true whether the unlocking succeeded or not
+     * @return bool Whether the unlocking succeeded or not
      */
     abstract protected function releaseLock();
 

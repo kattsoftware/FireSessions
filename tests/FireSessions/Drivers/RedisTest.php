@@ -317,4 +317,508 @@ class RedisTest extends \PHPUnit_Framework_TestCase
 
         $this->assertEquals(self::$false, $writeResult);
     }
+
+    public function testWriteFailWhenRedisDriverIsMissing()
+    {
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $redisDriver = new RedisDriver($config);
+
+        $writeResult = $redisDriver->write('1234', 'SESSION-DATA');
+
+        $this->assertEquals(self::$false, $writeResult);
+    }
+
+    public function testWriteFailWhenSessionIdIsDifferentAndReleasingOldLockFails()
+    {
+        $lockKey = 'fs_session:OLD_SESSION1234:lock';
+
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        // - start of read(OLD_SESSION1234)
+        // Acquiring first lock
+        $this->redisMock->expects($this->once())
+            ->method('ttl')
+            ->with($lockKey)
+            ->willReturn(0);
+
+        $this->redisMock->expects($this->once())
+            ->method('setex')
+            ->with($lockKey, 300, 1)
+            ->willReturn(true);
+
+        // Getting first session data
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with('fs_session:OLD_SESSION1234')
+            ->willReturn('OLD-SESSION-DATA');
+        // - end of read() call.
+
+        // - start of write(SESSION1234, 'SESSION-DATA')
+        $this->redisMock->expects($this->once())
+            ->method('delete')
+            ->with($lockKey)
+            ->willReturn(false);
+
+        $this->setExpectedException(
+            '\PHPUnit_Framework_Error',
+            'FireSessions\Drivers\Redis: Could not release the lock ' . $lockKey
+        );
+
+        $readResult = $redisDriver->read('OLD_SESSION1234');
+        $this->assertEquals('OLD-SESSION-DATA', $readResult);
+
+        $redisDriver->write('SESSION1234', 'SESSION-DATA');
+    }
+
+    public function testWriteFailWhenSessionIdIsDifferentAndAcquiringNewLockFails()
+    {
+        $lockKey = 'fs_session:OLD_SESSION1234:lock';
+        $newLockKey = 'fs_session:SESSION1234:lock';
+
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        // - start of read(OLD_SESSION1234)
+        // Acquiring first lock
+        $this->redisMock->expects($this->exactly(2))
+            ->method('ttl')
+            ->willReturnMap(array(
+                array($lockKey, 0),
+                array($newLockKey, 0)
+            ));
+
+        $this->redisMock->expects($this->exactly(2))
+            ->method('setex')
+            ->willReturnMap(array(
+                array($lockKey, 300, 1, true),
+                array($newLockKey, 300, 1, false)
+            ));
+
+        // Getting first session data
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with('fs_session:OLD_SESSION1234')
+            ->willReturn('OLD-SESSION-DATA');
+        // - end of read() call.
+
+        // write(SESSION1234, 'SESSION-DATA')
+        $this->redisMock->expects($this->once())
+            ->method('delete')
+            ->with($lockKey)
+            ->willReturn(true);
+
+        $this->setExpectedException(
+            '\PHPUnit_Framework_Error',
+            'FireSessions\Drivers\Redis: Cannot acquire the lock ' . $newLockKey
+        );
+
+        $readResult = $redisDriver->read('OLD_SESSION1234');
+        $this->assertEquals('OLD-SESSION-DATA', $readResult);
+
+        $redisDriver->write('SESSION1234', 'SESSION-DATA');
+    }
+
+    public function testWriteFailWhenSettingTheNewSessionDataFails()
+    {
+
+        $lockKey = 'fs_session:OLD_SESSION1234:lock';
+        $newLockKey = 'fs_session:SESSION1234:lock';
+
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30',
+            'expiration' => 7200
+        );
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        // - start of read(OLD_SESSION1234)
+        // Acquiring first lock
+        $this->redisMock->expects($this->exactly(2))
+            ->method('ttl')
+            ->willReturnMap(array(
+                array($lockKey, 0),
+                array($newLockKey, 0)
+            ));
+
+        $this->redisMock->expects($this->exactly(2))
+            ->method('setex')
+            ->willReturnMap(array(
+                array($lockKey, 300, 1, true),
+                array($newLockKey, 300, 1, true)
+            ));
+
+        // Getting first session data
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with('fs_session:OLD_SESSION1234')
+            ->willReturn('OLD-SESSION-DATA');
+        // - end of read() call.
+
+        // write(SESSION1234, 'SESSION-DATA')
+        $this->redisMock->expects($this->once())
+            ->method('delete')
+            ->with($lockKey)
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('setTimeout')
+            ->with($newLockKey, 300)
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('set')
+            ->with('fs_session:SESSION1234', 'SESSION-DATA', 7200)
+            ->willReturn(false);
+
+        $readResult = $redisDriver->read('OLD_SESSION1234');
+        $writeResult = $redisDriver->write('SESSION1234', 'SESSION-DATA');
+
+        $this->assertEquals('OLD-SESSION-DATA', $readResult);
+        $this->assertEquals(self::$false, $writeResult);
+    }
+
+    public function testWriteSuccessWhenSessionIdsAreDifferent()
+    {
+
+        $lockKey = 'fs_session:OLD_SESSION1234:lock';
+        $newLockKey = 'fs_session:SESSION1234:lock';
+
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30',
+            'expiration' => 7200
+        );
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        // - start of read(OLD_SESSION1234)
+        // Acquiring first lock
+        $this->redisMock->expects($this->exactly(2))
+            ->method('ttl')
+            ->willReturnMap(array(
+                array($lockKey, 0),
+                array($newLockKey, 0)
+            ));
+
+        $this->redisMock->expects($this->exactly(2))
+            ->method('setex')
+            ->willReturnMap(array(
+                array($lockKey, 300, 1, true),
+                array($newLockKey, 300, 1, true)
+            ));
+
+        // Getting first session data
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with('fs_session:OLD_SESSION1234')
+            ->willReturn('OLD-SESSION-DATA');
+        // - end of read() call.
+
+        // write(SESSION1234, 'SESSION-DATA')
+        $this->redisMock->expects($this->once())
+            ->method('delete')
+            ->with($lockKey)
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('setTimeout')
+            ->with($newLockKey, 300)
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('set')
+            ->with('fs_session:SESSION1234', 'SESSION-DATA', 7200)
+            ->willReturn(true);
+
+        $readResult = $redisDriver->read('OLD_SESSION1234');
+        $writeResult = $redisDriver->write('SESSION1234', 'SESSION-DATA');
+
+        $this->assertEquals('OLD-SESSION-DATA', $readResult);
+        $this->assertEquals(self::$true, $writeResult);
+    }
+
+    public function testWriteFailWhenSessionIdsAreTheSameAndExtendingSessionTtlFails()
+    {
+        $lockKey = 'fs_session:SESSION1234:lock';
+
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30',
+            'expiration' => 7200
+        );
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        // - start of read(OLD_SESSION1234)
+        // Acquiring first lock
+        $this->redisMock->expects($this->once())
+            ->method('ttl')
+            ->with($lockKey)
+            ->willReturn(0);
+
+        $this->redisMock->expects($this->once())
+            ->method('setex')
+            ->with($lockKey, 300, 1)
+            ->willReturn(true);
+
+        // Getting first session data
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with('fs_session:SESSION1234')
+            ->willReturn('SESSION-DATA');
+        // - end of read() call.
+
+        // write(SESSION1234, 'SESSION-DATA')
+        $this->redisMock->expects($this->exactly(2))
+            ->method('setTimeout')
+            ->willReturnMap(array(
+                array($lockKey, 300, true),
+                array('fs_session:SESSION1234', 7200, false)
+            ));
+
+        $readResult = $redisDriver->read('SESSION1234');
+        $writeResult = $redisDriver->write('SESSION1234', 'SESSION-DATA');
+
+        $this->assertEquals('SESSION-DATA', $readResult);
+        $this->assertEquals(self::$false, $writeResult);
+    }
+
+    public function testWriteSuccessWhenSessionIdsAreTheSame()
+    {
+        $lockKey = 'fs_session:SESSION1234:lock';
+
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30',
+            'expiration' => 7200
+        );
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        // - start of read(OLD_SESSION1234)
+        // Acquiring first lock
+        $this->redisMock->expects($this->once())
+            ->method('ttl')
+            ->with($lockKey)
+            ->willReturn(0);
+
+        $this->redisMock->expects($this->once())
+            ->method('setex')
+            ->with($lockKey, 300, 1)
+            ->willReturn(true);
+
+        // Getting first session data
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with('fs_session:SESSION1234')
+            ->willReturn('SESSION-DATA');
+        // - end of read() call.
+
+        // write(SESSION1234, 'SESSION-DATA')
+        $this->redisMock->expects($this->exactly(2))
+            ->method('setTimeout')
+            ->willReturnMap(array(
+                array($lockKey, 300, true),
+                array('fs_session:SESSION1234', 7200, true)
+            ));
+
+        $readResult = $redisDriver->read('SESSION1234');
+        $writeResult = $redisDriver->write('SESSION1234', 'SESSION-DATA');
+
+        $this->assertEquals('SESSION-DATA', $readResult);
+        $this->assertEquals(self::$true, $writeResult);
+    }
+
+    public function testCloseOnSuccess()
+    {
+        // Perform a read first
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $lockKey = 'fs_session:1234:lock';
+        $key = 'fs_session:1234';
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        $this->redisMock->expects($this->once())
+            ->method('connect')
+            ->with('localhost', '1234', '30')
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('setex')
+            ->with($lockKey, 300, 1)
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with($key)
+            ->willReturn('SESSION-DATA');
+
+        // close() required calls
+        $this->redisMock->expects($this->once())
+            ->method('ping')
+            ->willReturn('+PONG');
+
+        $this->redisMock->expects($this->once())
+            ->method('close')
+            ->willReturn(true);
+
+        // lock releasing
+        $this->redisMock->expects($this->once())
+            ->method('delete')
+            ->with($lockKey)
+            ->willReturn(true);
+
+        $open = $redisDriver->open(session_save_path(), 'fs_session');
+        $read = $redisDriver->read('1234');
+        $close = $redisDriver->close();
+
+        $this->assertEquals(self::$true, $open);
+        $this->assertEquals('SESSION-DATA', $read);
+        $this->assertEquals(self::$true, $close);
+    }
+
+    public function testCloseFailOnPingException()
+    {
+        // Perform a read first
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $lockKey = 'fs_session:1234:lock';
+        $key = 'fs_session:1234';
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        $this->redisMock->expects($this->once())
+            ->method('connect')
+            ->with('localhost', '1234', '30')
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('setex')
+            ->with($lockKey, 300, 1)
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with($key)
+            ->willReturn('SESSION-DATA');
+
+        // close() required calls
+        $this->redisMock->expects($this->once())
+            ->method('ping')
+            ->willThrowException(new \RedisException());
+
+        $this->setExpectedException(
+            '\PHPUnit_Framework_Error',
+            'FireSessions\Drivers\Redis: RedisException encountered:'
+        );
+
+        $open = $redisDriver->open(session_save_path(), 'fs_session');
+        $read = $redisDriver->read('1234');
+
+        $this->assertEquals(self::$true, $open);
+        $this->assertEquals('SESSION-DATA', $read);
+
+        $redisDriver->close();
+    }
+
+    public function testCloseFailureWhenClosingRedisConnectionFails()
+    {
+        // Perform a read first
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $lockKey = 'fs_session:1234:lock';
+        $key = 'fs_session:1234';
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        $this->redisMock->expects($this->once())
+            ->method('connect')
+            ->with('localhost', '1234', '30')
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('setex')
+            ->with($lockKey, 300, 1)
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with($key)
+            ->willReturn('SESSION-DATA');
+
+        // close() required calls
+        $this->redisMock->expects($this->once())
+            ->method('ping')
+            ->willReturn('+PONG');
+
+        $this->redisMock->expects($this->once())
+            ->method('close')
+            ->willReturn(false);
+
+        // lock releasing
+        $this->redisMock->expects($this->once())
+            ->method('delete')
+            ->with($lockKey)
+            ->willReturn(true);
+
+        $open = $redisDriver->open(session_save_path(), 'fs_session');
+        $read = $redisDriver->read('1234');
+        $close = $redisDriver->close();
+
+        $this->assertEquals(self::$true, $open);
+        $this->assertEquals('SESSION-DATA', $read);
+        $this->assertEquals(self::$false, $close);
+    }
 }
