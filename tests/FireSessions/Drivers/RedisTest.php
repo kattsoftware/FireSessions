@@ -821,4 +821,125 @@ class RedisTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('SESSION-DATA', $read);
         $this->assertEquals(self::$false, $close);
     }
+
+    public function testDestroyFailWhenRedisDeleteReturnsZero()
+    {
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $lockKey = 'fs_session:1234:lock';
+        $key = 'fs_session:1234';
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        $this->redisMock->expects($this->once())
+            ->method('connect')
+            ->with('localhost', '1234', '30')
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('setex')
+            ->with($lockKey, 300, 1)
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with($key)
+            ->willReturn('SESSION-DATA');
+
+        // delete() fail
+        $this->redisMock->expects($this->once())
+            ->method('delete')
+            ->with($key)
+            ->willReturn(0);
+
+        $this->setExpectedException(
+            '\PHPUnit_Framework_Error',
+            'FireSessions\Drivers\Redis: Redis::delete() returned'
+        );
+
+        $open = $redisDriver->open(session_save_path(), 'fs_session');
+        $read = $redisDriver->read('1234');
+
+        $this->assertEquals(self::$true, $open);
+        $this->assertEquals('SESSION-DATA', $read);
+
+        $redisDriver->destroy('1234');
+    }
+    
+    public function testDestroyFailWhenRedisIsNotInstantiated()
+    {
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $redisDriver = new RedisDriver($config);
+
+        $this->assertEquals(self::$false, $redisDriver->destroy('1234'));
+    }
+
+    public function testDestroyOnSuccess()
+    {
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $lockKey = 'fs_session:1234:lock';
+        $key = 'fs_session:1234';
+
+        $redisDriver = new RedisDriver($config);
+
+        $redisDriver->instantiateRedis($this->redisMock);
+
+        $this->redisMock->expects($this->once())
+            ->method('connect')
+            ->with('localhost', '1234', '30')
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('setex')
+            ->with($lockKey, 300, 1)
+            ->willReturn(true);
+
+        $this->redisMock->expects($this->once())
+            ->method('get')
+            ->with($key)
+            ->willReturn('SESSION-DATA');
+
+        // delete() fail
+        $this->redisMock->expects($this->once())
+            ->method('delete')
+            ->with($key)
+            ->willReturn(1);
+
+        $open = $redisDriver->open(session_save_path(), 'fs_session');
+        $read = $redisDriver->read('1234');
+        $destroy = $redisDriver->destroy('1234');
+
+        $this->assertEquals(self::$true, $open);
+        $this->assertEquals('SESSION-DATA', $read);
+        $this->assertEquals(self::$true, $destroy);
+    }
+
+    public function testGcOnSuccess()
+    {
+        $config = array(
+            'cookie_name' => 'fs_session',
+            'match_ip' => false,
+            'save_path' => 'host=localhost,port=1234,timeout=30'
+        );
+
+        $redisDriver = new RedisDriver($config);
+
+        $this->assertEquals(self::$true, $redisDriver->gc(0));
+    }
 }
