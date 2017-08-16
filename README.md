@@ -101,7 +101,7 @@ FireSession implements 3 types of session variables: user data, flash data and t
 
 _User data_ represents the collection of variables you set during a whole session lifetime. You can use them to store the ID of logged user, the privileges for a specific user, etc. Simply put, they are the classic `$_SESSION` variables.
 
-To **set user data variable**, you can use the following call:
+To _set user data variable_, you can use the following call:
 
 ```php
 $session->setUserdata('logged_userid', 1234);
@@ -126,7 +126,7 @@ $session->setUserdata(array(
 
 However, the recommendation here is to use the `$session` variables (the `Session` instance), so you will have consistency all over your project.
 
-To **get user data variable**, you can use the following call:
+To _get user data variable_, you can use the following call:
 
 ```php
 echo $session->userdata('logged_userid'); // outputs 1234
@@ -147,13 +147,13 @@ Once again, the recommendation is to use the `Session` instance. :)
 
 If the requested variable doesn't exists, `userdata()` will return `null`.
 
-If you need **all user data**, you can ask for the whole associative array of user data:
+If you need _all user data_, you can ask for the whole associative array of user data:
 
 ```php
 var_dump($session->userdata()); // Outputs all user data
 ```
 
-To **remove user data**, you can use the following call:
+To _remove user data_, you can use the following call:
 
 ```php
 // removes the "logged_userid" variable
@@ -167,7 +167,7 @@ $session->unsetUserdata(array('logged_userid', 'logger_username'));
 
 Flash data are the same as user data, except their lifetime is the current and the next HTTP request. After that, they will be deleted.
 
-To **set flash data**, you can use the following call:
+To _set flash data_, you can use the following call:
 
 ```php
 $session->setFlashdata('success_message', 'Your profile has been saved!');
@@ -180,7 +180,7 @@ $session->setFlashdata(array(
 ));
 ```
 
-To **get flash data** value, you can use the following call:
+To _get flash data_ value, you can use the following call:
 
 ```php
 echo $session->flashdata('email_validation');
@@ -190,7 +190,7 @@ echo $session->flashdata('email_validation');
 var_dump($session->flashdata());
 ```
 
-If, after being redirected to the next request, you want to **keep flash data** for another request, you can use the following call:
+If, after being redirected to the next request, you want to _keep flash data_ for another request, you can use the following call:
 
 ```php
 $session->keepFlashdata('email_validation');
@@ -200,7 +200,7 @@ $session->keepFlashdata('email_validation');
 $session->keepFlashdata(array('email_validation', 'firstname_validation'));
 ```
 
-To **remove flash data**, you can use the following call:
+To _remove flash data_, you can use the following call:
 
 ```php
 // removes the "email_validation" flash data
@@ -214,7 +214,7 @@ $session->unsetUserdata(array('email_validation', 'firstname_validation'));
 
 Temp data are similar to flash data, except they live for a giving number of seconds, instead of current and next request.
 
-To **set temp data**, you can use the following call:
+To _set temp data_, you can use the following call:
 
 ```php
 // this will create a temp data 'quiz_score', having the value of 72
@@ -238,7 +238,7 @@ $session->setTempdata(array(
 ), 300);
 ```
 
-To **get temp data** value, you can use the following call:
+To _get temp data_ value, you can use the following call:
 
 ```php
 echo $session->tempdata('quiz_question1');
@@ -248,7 +248,7 @@ echo $session->tempdata('quiz_question1');
 var_dump($session->tempdata());
 ```
 
-To **remove temp data**, you can ue the following call:
+To _remove temp data_, you can ue the following call:
 
 ```php
 // removes the 'quiz_question1' temp data
@@ -302,12 +302,12 @@ You may create your own session drivers as well! In this case, you will use the 
 
 To do that, you will need to build a class extending the `FireSessions\BaseSessionDriver` class (this, by its nature, implements [`SessionHandlerInterface`](http://php.net/manual/en/class.sessionhandlerinterface.php)). Besides implementing the `SessionHandlerInterface`'s methods, you will have to implement the additional `acquireLock` and `releaseLock` abstract methods as well.
 
-Don't forget that your custom driver should receive/have the `$config` array, and two additional primitive data types: what should be the true (success) returning value and the false (failure) returning value (see [this](https://wiki.php.net/rfc/session.user.return-value)).
+Don't forget that your custom driver should receive the `$config` array as well.
 
 After that, please call the parent constructor like this:
  
 ```php
-parent::__construct($config, $trueValue, $falseValue);
+parent::__construct($config);
 ```
 
 Once you are there, you can make use of the already available methods, such as `BaseSessionDriver::destroyCookie()` and `BaseSessionDriver::getIp()`.
@@ -322,7 +322,7 @@ DriversFactory::registerDriver('myDriver', MyDriver::class);
 DriversFactory::registerDriver('myDriver', $myDriver);
 ```
 
-If you are providing the class name as the second parameter (and not an actual instance of the custom driver), then the factory will try to create an instance by calling the class constructor with `$config`, `$trueValue` and `$falseValue` as constructor parameters.
+If you are providing the class name as the second parameter (and not an actual instance of the custom driver), then the factory will try to create an instance by providing `$config` as parameter.
 
 Now you are ready to use your custom driver!
 
