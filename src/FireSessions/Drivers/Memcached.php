@@ -50,7 +50,7 @@ class Memcached extends BaseSessionDriver
         $this->keyPrefix .= $this->config['cookie_name'] . ':';
 
         if ($this->config['match_ip'] === true) {
-            $this->keyPrefix .= $_SERVER['REMOTE_ADDR'] . ':';
+            $this->keyPrefix .= $this->getIp() . ':';
         }
     }
 
