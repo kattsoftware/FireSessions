@@ -13,3 +13,9 @@ before_install:
 
 install:
   - composer install --no-interaction
+
+script:
+  - $TRAVIS_BUILD_DIR/vendor/bin/phpunit --coverage-clover=coverage.xml
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
