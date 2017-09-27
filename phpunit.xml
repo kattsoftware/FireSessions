@@ -10,4 +10,10 @@
             <directory>./tests/FireSessions/Drivers/</directory>
         </testsuite>
     </testsuites>
+
+    <filter>
+        <blacklist>
+            <file>./src/FireSessions/Session.php</file>
+        </blacklist>
+    </filter>
 </phpunit>
