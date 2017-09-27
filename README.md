@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.org/kattsoftware/FireSessions.svg?branch=master)](https://travis-ci.org/kattsoftware/FireSessions)
+[![codecov](https://codecov.io/gh/kattsoftware/FireSessions/branch/master/graph/badge.svg)](https://codecov.io/gh/kattsoftware/FireSessions)
 
 ## Introduction
 
