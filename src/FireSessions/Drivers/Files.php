@@ -55,10 +55,12 @@ class Files extends BaseSessionDriver
      */
     public function open($savePath, $name)
     {
-        if (!is_dir($savePath) && !@mkdir($savePath, 0700, true)) {
-            trigger_error(__CLASS__ . ': "' . $savePath . '" is not a directory, doesn\'t exist or cannot be created.', E_USER_ERROR);
+        if (!is_dir($savePath)) {
+            if (!@mkdir($savePath, 0700, true)) {
+                trigger_error(__CLASS__ . ': "' . $savePath . '" is not a directory, doesn\'t exist or cannot be created.', E_USER_ERROR);
 
-            return self::false();
+                return self::false();
+            }
         }
 
         if (!@is_writable($savePath)) {
