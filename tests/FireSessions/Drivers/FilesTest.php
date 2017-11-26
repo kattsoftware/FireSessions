@@ -5,12 +5,18 @@ namespace FireSessions\Tests\Drivers;
 use FireSessions\Drivers\Files;
 use FireSessions\Session;
 use org\bovigo\vfs\vfsStream;
+use org\bovigo\vfs\vfsStreamFile;
 
 class FilesTest extends \PHPUnit_Framework_TestCase
 {
     private static $true;
 
     private static $false;
+
+    /**
+     * @var vfsStreamFile
+     */
+    private static $genericSessionFile;
 
     /**
      * @var \org\bovigo\vfs\vfsStreamDirectory
@@ -31,12 +37,14 @@ class FilesTest extends \PHPUnit_Framework_TestCase
     public function setUp()
     {
         self::$fs = vfsStream::setup('sessions', 0666);
-        vfsStream::newFile('fs_session1234', 0666)->at(self::$fs)->setContent('SESSION-DATA');
         vfsStream::newFile('fs_sessionno-read', 0222)->at(self::$fs);
         vfsStream::newFile('fs_sessionno-write', 0444)->at(self::$fs);
         vfsStream::newFile('fs_sessionno-permissions', 0000)->at(self::$fs);
         vfsStream::newFile('fs_sessioninvalid', 0000)->at(self::$fs);
         vfsStream::newDirectory('fs_sessioninvalid', 0000)->at(self::$fs);
+
+        self::$genericSessionFile = vfsStream::newFile('fs_session1234', 0666);
+        self::$genericSessionFile->at(self::$fs)->setContent('SESSION-DATA');
 
         session_save_path(self::$fs->url());
     }
@@ -61,6 +69,27 @@ class FilesTest extends \PHPUnit_Framework_TestCase
         $filesDriver->open($config['save_path'], 'fs_session');
     }
 
+    public function testOpenWhenSavePathCannotBeCreatedWithoutErrorConversion()
+    {
+        $config = array(
+            'driver' => Session::FILES_DRIVER,
+            'save_path' => session_save_path() . '/anotherpath',
+            'match_ip' => false,
+        );
+
+        self::$fs->chmod(0000);
+
+        $filesDriver = new Files($config);
+
+        set_error_handler($this->createEUserErrorHandler(), E_USER_ERROR);
+
+        $result = $filesDriver->open($config['save_path'], 'fs_session');
+
+        restore_error_handler();
+
+        $this->assertEquals(self::$false, $result);
+    }
+
     public function testOpenWhenSavePathIsNotWritable()
     {
         $config = array(
@@ -79,6 +108,27 @@ class FilesTest extends \PHPUnit_Framework_TestCase
         );
 
         $filesDriver->open($config['save_path'], 'fs_session');
+    }
+
+    public function testOpenWhenSavePathIsNotWritableWithoutErrorConversion()
+    {
+        $config = array(
+            'driver' => Session::FILES_DRIVER,
+            'save_path' => session_save_path(),
+            'match_ip' => false,
+        );
+
+        self::$fs->chmod(0000);
+
+        $filesDriver = new Files($config);
+
+        set_error_handler($this->createEUserErrorHandler(), E_USER_ERROR);
+
+        $result = $filesDriver->open($config['save_path'], 'fs_session');
+
+        restore_error_handler();
+
+        $this->assertEquals(self::$false, $result);
     }
 
     public function testOpenOnSuccess()
@@ -116,6 +166,103 @@ class FilesTest extends \PHPUnit_Framework_TestCase
         $filesDriver->read('no-permissions');
 
         $this->assertEquals(self::$true, $openResult);
+    }
+
+    public function testReadWhenSessionIdIsInvalidToTriggerFopenErrorWithoutErrorConversion()
+    {
+        $config = array(
+            'driver' => Session::FILES_DRIVER,
+            'save_path' => session_save_path(),
+            'match_ip' => false
+        );
+
+        $filesDriver = new Files($config);
+
+        $openResult = $filesDriver->open($config['save_path'], 'fs_session');
+
+        set_error_handler($this->createEUserErrorHandler(), E_USER_ERROR);
+
+        $result = $filesDriver->read('no-permissions');
+
+        restore_error_handler();
+
+        $this->assertEquals(self::$true, $openResult);
+        $this->assertEquals(self::$false, $result);
+    }
+
+    public function testReadWhenAcquiringLockFails()
+    {
+        $config = array(
+            'driver' => Session::FILES_DRIVER,
+            'save_path' => session_save_path(),
+            'match_ip' => false
+        );
+
+        $filesDriver = new Files($config);
+
+        $openResult = $filesDriver->open($config['save_path'], 'fs_session');
+
+        // lock the file
+        $handler = @fopen($config['save_path'] . DIRECTORY_SEPARATOR . 'fs_session1234', 'c+b');
+        flock($handler, LOCK_EX);
+
+        $this->setExpectedException(
+            '\PHPUnit_Framework_Error',
+            'FireSessions\Drivers\Files: Unable to acquire a lock for ' . session_save_path() . DIRECTORY_SEPARATOR . 'fs_session1234'
+        );
+
+        $filesDriver->read('1234');
+
+        $this->assertEquals(self::$true, $openResult);
+
+        flock($handler, LOCK_UN);
+        fclose($handler);
+    }
+
+    public function testReadWhenAcquiringLockFailsWithoutErrorConversion()
+    {
+        $config = array(
+            'driver' => Session::FILES_DRIVER,
+            'save_path' => session_save_path(),
+            'match_ip' => false
+        );
+
+        $filesDriver = new Files($config);
+
+        $openResult = $filesDriver->open($config['save_path'], 'fs_session');
+
+        // lock the file
+        $handler = @fopen($config['save_path'] . DIRECTORY_SEPARATOR . 'fs_session1234', 'c+b');
+        flock($handler, LOCK_EX);
+
+        set_error_handler($this->createEUserErrorHandler(), E_USER_ERROR);
+
+        $result = $filesDriver->read('1234');
+
+        restore_error_handler();
+
+        $this->assertEquals(self::$true, $openResult);
+        $this->assertEquals(self::$false, $result);
+
+        flock($handler, LOCK_UN);
+        fclose($handler);
+    }
+
+    public function testReadWhenFileIsNewCreated()
+    {
+        $config = array(
+            'driver' => Session::FILES_DRIVER,
+            'save_path' => session_save_path(),
+            'match_ip' => false
+        );
+
+        $filesDriver = new Files($config);
+
+        $openResult = $filesDriver->open($config['save_path'], 'fs_session');
+        $readResult = $filesDriver->read('12345');
+
+        $this->assertEquals(self::$true, $openResult);
+        $this->assertEquals('', $readResult);
     }
 
     public function testReadOnSuccess()
@@ -258,5 +405,12 @@ class FilesTest extends \PHPUnit_Framework_TestCase
         $this->assertNull(self::$fs->getChild('fs_session' . md5('1')));
         $this->assertNull(self::$fs->getChild('fs_session' . md5('2')));
         $this->assertInstanceOf('org\bovigo\vfs\vfsStreamFile', self::$fs->getChild('fs_session' . md5('3')));
+    }
+
+    private function createEUserErrorHandler()
+    {
+        return function ($errType, $errString) {
+            $this->assertEquals(E_USER_ERROR, $errType);
+        };
     }
 }

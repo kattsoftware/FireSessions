@@ -45,6 +45,17 @@ class RedisTest extends \PHPUnit_Framework_TestCase
         new RedisDriver($config);
     }
 
+    public function testCreatingTheDriverWhenSavePathIsMissingWithoutErrorConversion()
+    {
+        $config = array();
+
+        set_error_handler($this->createEUserErrorHandler(), E_USER_ERROR);
+
+        new RedisDriver($config);
+
+        restore_error_handler();
+    }
+
     public function testCreatingTheDriverWhenSavePathDoesNotContainHost()
     {
         $config = array(
@@ -57,6 +68,37 @@ class RedisTest extends \PHPUnit_Framework_TestCase
         );
 
         new RedisDriver($config);
+    }
+
+    public function testCreatingTheDriverWhenSavePathDoesNotContainHostWithoutErrorConversion()
+    {
+        $config = array(
+            'save_path' => 'port=1234'
+        );
+
+        set_error_handler($this->createEUserErrorHandler(), E_USER_ERROR);
+
+        new RedisDriver($config);
+
+        restore_error_handler();
+    }
+
+    public function testCreatingTheDriverWithPrefixAndMatchIpConfig()
+    {
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        $config = array(
+            'save_path' => 'host=localhost,port=1234,prefix=mytest',
+            'match_ip' => true
+        );
+
+        $driver = new RedisDriver($config);
+
+        $reflectionObj = new \ReflectionObject($driver);
+        $keyPrefixProp = $reflectionObj->getProperty('keyPrefix');
+        $keyPrefixProp->setAccessible(true);
+
+        $this->assertEquals('mytest127.0.0.1:', $keyPrefixProp->getValue($driver));
     }
 
     public function testOpenWhenRedisConnectFails()
@@ -941,5 +983,12 @@ class RedisTest extends \PHPUnit_Framework_TestCase
         $redisDriver = new RedisDriver($config);
 
         $this->assertEquals(self::$true, $redisDriver->gc(0));
+    }
+
+    private function createEUserErrorHandler()
+    {
+        return function ($errType, $errString) {
+            $this->assertEquals(E_USER_ERROR, $errType);
+        };
     }
 }

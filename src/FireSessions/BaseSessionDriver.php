@@ -28,12 +28,12 @@ abstract class BaseSessionDriver implements \SessionHandlerInterface
     /**
      * @var mixed What value should the instance return in case of success
      */
-    private static $trueValue;
+    private static $trueValue = 0;
 
     /**
      * @var mixed What value should the instance return in case of failure
      */
-    private static $falseValue;
+    private static $falseValue = -1;
 
     /**
      * BaseSessionDriver constructor.
@@ -44,13 +44,8 @@ abstract class BaseSessionDriver implements \SessionHandlerInterface
     {
         $this->config = $config;
 
-        if (version_compare(PHP_VERSION, '7.0.0') >= 0) {
-            self::$trueValue = true;
-            self::$falseValue = false;
-        } else {
-            self::$trueValue = 0;
-            self::$falseValue = -1;
-        }
+        $isPHP7 = version_compare(PHP_VERSION, '7.0.0') >= 0;
+        $isPHP7 && self::$trueValue = true && self::$falseValue = false;
     }
 
     /**
