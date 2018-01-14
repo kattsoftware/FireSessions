@@ -259,6 +259,8 @@ class Memcached extends BaseSessionDriver
                     ? $this->memcached->set($this->lockKey, 1, 300)
                     : false;
             }
+
+            return true;
         }
 
         // 30 attempts to obtain a lock (in case another request already has it)
