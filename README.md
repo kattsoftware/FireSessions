@@ -10,7 +10,7 @@
 You can install FireSessions by using [composer](https://getcomposer.org/):
 
 ```
-composer require kattsoftware/firesessions:^1.0
+composer require kattsoftware/firesessions:^1.1
 ```
 
 ## Configuration
