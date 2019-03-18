@@ -3,6 +3,8 @@
 namespace FireSessions\Drivers;
 
 use FireSessions\BaseSessionDriver;
+use FireSessions\Exceptions\DriverFaultException;
+use Memcached as MemcachedServer;
 
 /**
  * Memcached session driver
@@ -13,14 +15,14 @@ use FireSessions\BaseSessionDriver;
 class Memcached extends BaseSessionDriver
 {
     /**
-     * @var \Memcached The server instance
+     * @var MemcachedServer The server instance
      */
     private $memcached;
 
     /**
      * @var string The Memcached key prefix; will be set to $this->config['cookie_name'] . ':'
      */
-    private $keyPrefix = '';
+    private $keyPrefix;
 
     /**
      * @var string Saved locking specific key for further comparisons
@@ -33,21 +35,19 @@ class Memcached extends BaseSessionDriver
     private $lockAcquired = false;
 
     /**
-     * Memcached driver constructor.
-     *
-     * @param array $config
+     * {@inheritdoc}
      */
-    public function __construct(array $config)
+    public function __construct(array $config, MemcachedServer $memcachedInstance = null)
     {
         parent::__construct($config);
 
-        if (empty($this->config['save_path'])) {
-            trigger_error(__CLASS__ . ': No or invalid "save_path" setting provided.', E_USER_ERROR);
+        $this->memcached = $memcachedInstance === null ? new MemcachedServer() : $memcachedInstance ;
 
-            return;
+        if (empty($this->config['save_path'])) {
+            throw new DriverFaultException('No "save_path" setting provided');
         }
 
-        $this->keyPrefix .= $this->config['cookie_name'] . ':';
+        $this->keyPrefix = $this->config['cookie_name'] . ':';
 
         if ($this->config['match_ip'] === true) {
             $this->keyPrefix .= $this->getIp() . ':';
@@ -64,10 +64,8 @@ class Memcached extends BaseSessionDriver
      */
     public function open($savePath, $name)
     {
-        $this->memcached = new \Memcached();
-
         // required for touch-ing
-        $this->memcached->setOption(\Memcached::OPT_BINARY_PROTOCOL, true);
+        $this->memcached->setOption(MemcachedServer::OPT_BINARY_PROTOCOL, true);
         $serverList = array();
 
         if (!isset($this->config['fetch_pool_servers'])
@@ -86,6 +84,11 @@ class Memcached extends BaseSessionDriver
             $parts = explode(':', $server);
 
             if (!isset($parts[0], $parts[1])) {
+                $this->logger->error(
+                    'The session save path is not a directory, does not exist or cannot be created',
+                    array('savePath' => $savePath, 'sessionName' => $name, 'sessionHandler' => __CLASS__)
+                );
+
                 trigger_error(__CLASS__ . ': Invalid server: ' . $server, E_USER_ERROR);
                 $this->memcached = null;
 
@@ -111,6 +114,8 @@ class Memcached extends BaseSessionDriver
 
             return self::false();
         }
+
+        $this->php5ValidateId();
 
         return self::true();
     }
@@ -158,11 +163,11 @@ class Memcached extends BaseSessionDriver
                 return self::false();
             }
 
-            $this->initialSessionId = md5('');
+            $this->sessionDataChecksum = md5('');
             $this->initialSessionId = $sessionId;
         }
 
-        $key = $this->keyPrefix.$sessionId;
+        $key = $this->keyPrefix . $sessionId;
 
         $this->memcached->replace($this->lockKey, 1, 300);
         $dataChecksum = md5($sessionData);
@@ -177,7 +182,7 @@ class Memcached extends BaseSessionDriver
             return self::false();
         } elseif (
             $this->memcached->touch($key, $this->config['expiration'])
-            || ($this->memcached->getResultCode() === \Memcached::RES_NOTFOUND
+            || ($this->memcached->getResultCode() === MemcachedServer::RES_NOTFOUND
                 && $this->memcached->set($key, $sessionData, $this->config['expiration']))
         ) {
             return self::true();
@@ -241,10 +246,7 @@ class Memcached extends BaseSessionDriver
     }
 
     /**
-     * Lock acquiring for this implementation.
-     *
-     * @param string $sessionId If required, this can be the session ID
-     * @return bool if the locking succeeded or not
+     * {@inheritdoc}
      */
     protected function acquireLock($sessionId = null)
     {
@@ -255,7 +257,7 @@ class Memcached extends BaseSessionDriver
         // correct session ID.
         if ($this->lockKey === $newLockKey) {
             if (!$this->memcached->replace($this->lockKey, 1, 300)) {
-                return ($this->memcached->getResultCode() === \Memcached::RES_NOTFOUND)
+                return ($this->memcached->getResultCode() === MemcachedServer::RES_NOTFOUND)
                     ? $this->memcached->set($this->lockKey, 1, 300)
                     : false;
             }
@@ -293,14 +295,12 @@ class Memcached extends BaseSessionDriver
     }
 
     /**
-     * Releases the obtained lock over a session instance.
-     *
-     * @return true whether the unlocking succeeded or not
+     * {@inheritdoc}
      */
     protected function releaseLock()
     {
         if ($this->memcached !== null && $this->lockKey !== null && $this->lockAcquired) {
-            if (!$this->memcached->delete($this->lockKey) && $this->memcached->getResultCode() !== \Memcached::RES_NOTFOUND) {
+            if (!$this->memcached->delete($this->lockKey) && $this->memcached->getResultCode() !== MemcachedServer::RES_NOTFOUND) {
                 trigger_error(__CLASS__ . ': Cannot free the lock ' . $this->lockKey);
 
                 return false;
@@ -311,5 +311,15 @@ class Memcached extends BaseSessionDriver
         }
 
         return true;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function validateSessionId($sessionId)
+    {
+        $this->memcached->get($this->keyPrefix . $sessionId);
+
+        return $this->memcached->getResultCode() === MemcachedServer::RES_SUCCESS;
     }
 }

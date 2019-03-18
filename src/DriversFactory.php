@@ -2,6 +2,10 @@
 
 namespace FireSessions;
 
+use FireSessions\Drivers\Files;
+use FireSessions\Drivers\Memcached;
+use FireSessions\Drivers\Redis;
+
 /**
  * Drivers factory
  *
@@ -14,9 +18,9 @@ class DriversFactory
      * @var array Associative array of driver names and their corresponding classes (or created instances)
      */
     private static $drivers = array(
-        Session::FILES_DRIVER => '\FireSessions\Drivers\Files',
-        Session::REDIS_DRIVER => '\FireSessions\Drivers\Redis',
-        Session::MEMCACHED_DRIVER => '\FireSessions\Drivers\Memcached',
+        SessionFactory::FILES_DRIVER => Files::class,
+        SessionFactory::REDIS_DRIVER => Redis::class,
+        SessionFactory::MEMCACHED_DRIVER => Memcached::class,
     );
 
     /**
@@ -27,11 +31,8 @@ class DriversFactory
      *
      * @return BaseSessionDriver Instance of built driver
      */
-    public function build($driver, array $config)
+    public function create($driver, array $config)
     {
-        // Default driver
-        in_array($driver, array_keys(self::$drivers)) || $driver = Session::FILES_DRIVER;
-
         if (is_string(self::$drivers[$driver])) {
             return new self::$drivers[$driver]($config);
         }
@@ -44,16 +45,14 @@ class DriversFactory
      *
      * @param string $name Driver name
      * @param string|BaseSessionDriver $class Class name or instance of a driver
-     * @return bool Whether the registering succeeded or not
+     * @throws \InvalidArgumentException if the registering failed
      */
     public static function registerDriver($name, $class)
     {
-        if (is_subclass_of($class, '\FireSessions\BaseSessionDriver')) {
-            self::$drivers[$name] = $class;
-
-            return true;
+        if (!is_subclass_of($class, BaseSessionDriver::class)) {
+            throw new \InvalidArgumentException("The provided driver $name is not extending ");
         }
 
-        return false;
+        self::$drivers[$name] = $class;
     }
 }

@@ -3,6 +3,8 @@
 namespace FireSessions\Drivers;
 
 use FireSessions\BaseSessionDriver;
+use FireSessions\Exceptions\DriverFaultException;
+use Redis as RedisServer;
 
 /**
  * Redis session driver
@@ -13,7 +15,7 @@ use FireSessions\BaseSessionDriver;
 class Redis extends BaseSessionDriver
 {
     /**
-     * @var \Redis The Redis instance
+     * @var RedisServer The Redis instance
      */
     private $redis;
 
@@ -38,22 +40,21 @@ class Redis extends BaseSessionDriver
     private $hasKey = false;
 
     /**
-     * Redis driver constructor.
-     *
-     * @param array $config
+     * {@inheritdoc}
      */
-    public function __construct(array $config)
+    public function __construct(array $config, RedisServer $redisInstance = null)
     {
         parent::__construct($config);
 
-        if (empty($this->config['save_path'])) {
-            trigger_error(__CLASS__ . ': No or invalid "save_path" setting found.', E_USER_ERROR);
+        $this->redis = $redisInstance !== null ? $redisInstance : new RedisServer();
 
-            return;
+        if (empty($this->config['save_path'])) {
+            throw new DriverFaultException('No "save_path" was provided in the config: ' . var_export($this->config, true));
         }
 
         $savePathSettings = explode(',', $this->config['save_path']);
         $this->config['save_path'] = array();
+
         foreach ($savePathSettings as $savePathSetting) {
             $setting = explode('=', $savePathSetting);
             isset($setting[1]) || $setting[1] = null;
@@ -61,9 +62,9 @@ class Redis extends BaseSessionDriver
         }
 
         if (!isset($this->config['save_path']['host'])) {
-            trigger_error(__CLASS__ . ': No or invalid "host" setting in the "save_path" config.', E_USER_ERROR);
-
-            return;
+            throw new DriverFaultException(
+                'No host was provided in the "save_path" setting: ' . var_export($this->hideSavePathPassword($this->config['save_path']), true)
+            );
         }
 
         isset($this->config['save_path']['port']) || ($this->config['save_path']['port'] = null);
@@ -71,11 +72,7 @@ class Redis extends BaseSessionDriver
         isset($this->config['save_path']['database']) || ($this->config['save_path']['database'] = null);
         isset($this->config['save_path']['timeout']) || ($this->config['save_path']['timeout'] = null);
 
-        if (isset($this->config['save_path']['prefix'])) {
-            $this->keyPrefix = $this->config['save_path']['prefix'];
-        } else {
-            $this->keyPrefix = $this->config['cookie_name'] . ':';
-        }
+        $this->keyPrefix = $this->config['cookie_name'] . ':';
 
         if ($this->config['match_ip'] === true) {
             $this->keyPrefix .= $this->getIp() . ':';
@@ -92,32 +89,38 @@ class Redis extends BaseSessionDriver
      */
     public function open($savePath, $name)
     {
-        $redis = $this->instantiateRedis();
-
-        if (!$redis->connect(
+        if (!$this->redis->connect(
             $this->config['save_path']['host'],
             $this->config['save_path']['port'],
             $this->config['save_path']['timeout'])
         ) {
-            trigger_error(__CLASS__ . ': Unable to establish a Redis connection with provided settings.', E_USER_ERROR);
-
-            return self::false();
-        }
-
-        if (isset($this->config['save_path']['password']) && !$redis->auth($this->config['save_path']['password'])) {
-            trigger_error(__CLASS__ . ': Unable to authenticate with the provided password.', E_USER_ERROR);
-
-            return self::false();
-        }
-
-        if (isset($this->config['save_path']['database']) && !$redis->select($this->config['save_path']['database'])) {
-            trigger_error(
-                __CLASS__ . ': Unable to switch to provided Redis database: ' . $this->config['save_path']['database'],
-                E_USER_ERROR
+            $this->logger->critical(
+                'Unable to establish a Redis connection with provided settings',
+                array('savePath' => $this->hideSavePathPassword($this->config['save_path']), 'sessionName' => $name, 'sessionHandler' => __CLASS__)
             );
 
             return self::false();
         }
+
+        if (isset($this->config['save_path']['password']) && !$this->redis->auth($this->config['save_path']['password'])) {
+            $this->logger->critical(
+                'Unable to authenticate to the Redis server with the provided password',
+                array('savePath' => $this->hideSavePathPassword($this->config['save_path']), 'sessionName' => $name, 'sessionHandler' => __CLASS__)
+            );
+
+            return self::false();
+        }
+
+        if (isset($this->config['save_path']['database']) && !$this->redis->select($this->config['save_path']['database'])) {
+            $this->logger->critical(
+                'Unable select the provided Redis database',
+                array('savePath' => $this->hideSavePathPassword($this->config['save_path']), 'sessionName' => $name, 'sessionHandler' => __CLASS__)
+            );
+
+            return self::false();
+        }
+
+        $this->php5ValidateId();
 
         return self::true();
     }
@@ -186,15 +189,14 @@ class Redis extends BaseSessionDriver
             if ($this->redis->set($newKey, $sessionData, $this->config['expiration'])) {
                 $this->sessionDataChecksum = $newDataChecksum;
                 $this->hasKey = true;
+
                 return self::true();
             }
 
             return self::false();
         }
 
-        return ($this->redis->setTimeout($newKey, $this->config['expiration']))
-            ? self::true()
-            : self::false();
+        return $this->redis->setTimeout($newKey, $this->config['expiration']) ? self::true() : self::false();
     }
 
     /**
@@ -213,7 +215,10 @@ class Redis extends BaseSessionDriver
                     }
                 }
             } catch (\RedisException $e) {
-                trigger_error(__CLASS__ . ': RedisException encountered: ' . $e);
+                $this->logger->error(
+                    'RedisException encountered',
+                    array('redisException' => $e, 'sessionHandler' => __CLASS__)
+                );
             }
 
             $this->redis = null;
@@ -236,7 +241,10 @@ class Redis extends BaseSessionDriver
         if ($this->redis !== null && $this->lockKey !== null) {
             $result = $this->redis->delete($this->keyPrefix . $sessionId);
             if ($result !== 1) {
-                trigger_error(__CLASS__ . ': Redis::delete() returned ' . var_export($result, true) . ', instead of 1.');
+                $this->logger->error(
+                    'Redis::delete() returned a different value than 1',
+                    array('deleteResult' => $result, 'sessionHandler' => __CLASS__)
+                );
             }
 
             $this->destroyCookie();
@@ -261,29 +269,7 @@ class Redis extends BaseSessionDriver
     }
 
     /**
-     * Instantiate the Redis.
-     *
-     * @param string|\Redis $class An extending instance of \Redis or a fully qualified class name
-     * @return \Redis Redis instance
-     */
-    public function instantiateRedis($class = '\Redis')
-    {
-        if ($this->redis === null) {
-            if ($class instanceof \Redis) {
-                $this->redis = $class;
-            } else {
-                $this->redis = new $class;
-            }
-        }
-
-        return $this->redis;
-    }
-
-    /**
-     * Lock acquiring for this implementation.
-     *
-     * @param string $sessionId If required, this can be the session ID
-     * @return bool if the locking succeeded or not
+     * {@inheritdoc}
      */
     protected function acquireLock($sessionId = null)
     {
@@ -305,7 +291,10 @@ class Redis extends BaseSessionDriver
             }
 
             if (!$this->redis->setex($newLockKey, 300, 1)) {
-                trigger_error(__CLASS__ . ': Cannot acquire the lock ' . $newLockKey, E_USER_ERROR);
+                $this->logger->error(
+                    'Could not obtain the session lock',
+                    array('lockKey' => $newLockKey, 'sessionHandler' => __CLASS__)
+                );
 
                 return false;
             }
@@ -316,13 +305,19 @@ class Redis extends BaseSessionDriver
 
         // Last checks
         if ($attempt === 30) {
-            trigger_error(__CLASS__ . ': Cannot acquire  the lock ' . $newLockKey . ' after 30 attempts.', E_USER_ERROR);
+            $this->logger->error(
+                'Could not obtain the session lock after 30 attempts',
+                array('lockKey' => $newLockKey, 'sessionHandler' => __CLASS__)
+            );
 
             return false;
         }
 
         if ($ttl === -1) {
-            trigger_error(__CLASS__ . ': No TTL for ' . $newLockKey . ' lock. Overriding...', E_USER_NOTICE);
+            $this->logger->notice(
+                'No TTL for the session lock',
+                array('lockKey' => $newLockKey, 'sessionHandler' => __CLASS__)
+            );
         }
 
         $this->lockAcquired = true;
@@ -331,15 +326,16 @@ class Redis extends BaseSessionDriver
     }
 
     /**
-     * Releases the obtained lock over a session instance.
-     *
-     * @return bool Whether the unlocking succeeded or not
+     * {@inheritdoc}
      */
     protected function releaseLock()
     {
         if (isset($this->redis, $this->lockKey) && $this->lockAcquired) {
             if (!$this->redis->delete($this->lockKey)) {
-                trigger_error(__CLASS__ . ': Could not release the lock ' . $this->lockKey, E_USER_ERROR);
+                $this->logger->error(
+                    'Could not release the session lock',
+                    array('lockKey' => $this->lockKey, 'sessionHandler' => __CLASS__)
+                );
 
                 return false;
             }
@@ -349,5 +345,26 @@ class Redis extends BaseSessionDriver
         }
 
         return true;
+    }
+
+    /**
+     * Hides the 'password' element of a "save_path" array.
+     *
+     * @param array $savePathArray
+     * @return array
+     */
+    private function hideSavePathPassword(array $savePathArray)
+    {
+        isset($savePathArray['password']) && ($savePathArray['password'] = '***');
+
+        return $savePathArray;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function validateSessionId($sessionId)
+    {
+        return (bool)$this->redis->exists($this->keyPrefix . $sessionId);
     }
 }

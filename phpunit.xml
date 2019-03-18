@@ -6,12 +6,18 @@
          bootstrap="./tests/bootstrap.php"
 >
     <testsuites>
-        <testsuite name="Drivers Test Suite">
-            <directory>./tests/FireSessions/Drivers/</directory>
+        <!--<testsuite name="Drivers Test Suite">-->
+            <!--<directory>./tests/FireSessions/Drivers/</directory>-->
+        <!--</testsuite>-->
+        <testsuite name="Integration Tests Suite">
+            <directory>./tests/Integration/</directory>
         </testsuite>
     </testsuites>
 
     <filter>
+        <whitelist>
+            <directory>./src/</directory>
+        </whitelist>
         <blacklist>
             <file>./src/FireSessions/Session.php</file>
         </blacklist>

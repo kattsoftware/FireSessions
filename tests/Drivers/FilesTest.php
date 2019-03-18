@@ -1,20 +1,28 @@
 <?php
 
+namespace FireSessions;
+
 namespace FireSessions\Tests\Drivers;
 
 use FireSessions\Drivers\Files;
+use FireSessions\Exceptions\DriverFaultException;
 use FireSessions\Session;
+use FireSessions\SessionFactory;
 use org\bovigo\vfs\vfsStream;
-use org\bovigo\vfs\vfsStreamFile;
+use phpmock\phpunit\PHPMock;
+use Psr\Log\LoggerInterface;
 
-class FilesTest extends \PHPUnit_Framework_TestCase
+class FilesTest extends BaseDriverTest
 {
-    private static $true;
-
-    private static $false;
+    use PHPMock;
 
     /**
-     * @var vfsStreamFile
+     * @var callable
+     */
+    public static $initSetCallable;
+
+    /**
+     * @var \org\bovigo\vfs\vfsStreamFile
      */
     private static $genericSessionFile;
 
@@ -23,16 +31,10 @@ class FilesTest extends \PHPUnit_Framework_TestCase
      */
     private static $fs;
 
-    public static function setUpBeforeClass()
-    {
-        if (version_compare(PHP_VERSION, '7.0.0') >= 0) {
-            self::$true = true;
-            self::$false = false;
-        } else {
-            self::$true = 0;
-            self::$false = -1;
-        }
-    }
+    /**
+     * @var LoggerInterface|\PHPUnit_Framework_MockObject_MockObject
+     */
+    private $loggerMock;
 
     public function setUp()
     {
@@ -46,14 +48,34 @@ class FilesTest extends \PHPUnit_Framework_TestCase
         self::$genericSessionFile = vfsStream::newFile('fs_session1234', 0666);
         self::$genericSessionFile->at(self::$fs)->setContent('SESSION-DATA');
 
-        session_save_path(self::$fs->url());
+        $this->loggerMock = $this->createMock(LoggerInterface::class);
     }
 
+    /**
+     * @dataProvider trailingSlashesProvider
+     * @param string $trailingChar
+     */
+    public function testDriverCreationWhenIniSetFails($trailingChar)
+    {
+        // Given
+        $savePath = self::$fs->url() . '/fs_session1234' . $trailingChar;
+        $config = ['save_path' => $savePath];
+        $exceptionMessage = 'Cannot set value';
+
+        // When
+        $time = $this->getFunctionMock('FireSessions', 'ini_set');
+        $time->expects($this->once())->willThrowException(new \InvalidArgumentException($exceptionMessage));
+
+//        $this->expectException(DriverFaultException::class);
+
+        new Files($config);
+    }
+    
     public function testOpenWhenSavePathCannotBeCreated()
     {
         $config = array(
-            'driver' => Session::FILES_DRIVER,
-            'save_path' => session_save_path() . '/anotherpath',
+            'driver' => SessionFactory::FILES_DRIVER,
+            'save_path' =>  self::$fs->url() . '/fs_sessioninvalid',
             'match_ip' => false,
         );
 
@@ -61,10 +83,7 @@ class FilesTest extends \PHPUnit_Framework_TestCase
 
         $filesDriver = new Files($config);
 
-        $this->setExpectedException(
-            '\PHPUnit_Framework_Error',
-            'FireSessions\Drivers\Files: "' . session_save_path() . '" is not a directory, doesn\'t exist or cannot be created.'
-        );
+        $this->expectExceptionMessage('FireSessions\Drivers\Files: "' . session_save_path() . '" is not a directory, doesn\'t exist or cannot be created.');
 
         $filesDriver->open($config['save_path'], 'fs_session');
     }
@@ -405,6 +424,11 @@ class FilesTest extends \PHPUnit_Framework_TestCase
         $this->assertNull(self::$fs->getChild('fs_session' . md5('1')));
         $this->assertNull(self::$fs->getChild('fs_session' . md5('2')));
         $this->assertInstanceOf('org\bovigo\vfs\vfsStreamFile', self::$fs->getChild('fs_session' . md5('3')));
+    }
+
+    public function trailingSlashesProvider()
+    {
+        return [['/'], ['\\']];
     }
 
     private function createEUserErrorHandler()

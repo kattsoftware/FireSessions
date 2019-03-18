@@ -2,14 +2,24 @@
 
 namespace FireSessions;
 
+use FireSessions\Exceptions\DriverFaultException;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerInterface;
+use SessionHandlerInterface;
+
 /**
  * Base class for defining session drivers.
  *
  * This content is released under the MIT License (MIT).
  * @see LICENSE file
  */
-abstract class BaseSessionDriver implements \SessionHandlerInterface
+abstract class BaseSessionDriver implements SessionHandlerInterface, LoggerAwareInterface
 {
+    /**
+     * @var LoggerInterface logger instance
+     */
+    protected $logger;
+
     /**
      * @var array Associative array of setting names and values
      */
@@ -36,14 +46,16 @@ abstract class BaseSessionDriver implements \SessionHandlerInterface
     private static $falseValue = -1;
 
     /**
-     * BaseSessionDriver constructor.
+     * Session driver constructor.
      *
      * @param array $config
+     * @throws DriverFaultException if the driver initialization cannot be performed
      */
     public function __construct(array $config)
     {
         $this->config = $config;
 
+        // https://wiki.php.net/rfc/session.user.return-value
         $isPHP7 = version_compare(PHP_VERSION, '7.0.0') >= 0;
         $isPHP7 && self::$trueValue = true && self::$falseValue = false;
     }
@@ -59,9 +71,28 @@ abstract class BaseSessionDriver implements \SessionHandlerInterface
     /**
      * Releases the obtained lock over a session instance.
      *
-     * @return bool Whether the unlocking succeeded or not
+     * @return bool if the unlocking succeeded or not
      */
     abstract protected function releaseLock();
+
+    /**
+     * Checks whether a session ID record exists server-side,
+     * enforcing sessions' strict mode.
+     *
+     * @param string $sessionId
+     * @return bool
+     */
+    abstract protected function validateSessionId($sessionId);
+
+    /**
+     * Enforces session.use_strict_mode for PHP 5.x
+     */
+    protected function php5ValidateId()
+    {
+        if (isset($_COOKIE[$this->config['cookie_name']]) && !$this->validateSessionId($_COOKIE[$this->config['cookie_name']])) {
+            unset($_COOKIE[$this->config['cookie_name']]);
+        }
+    }
 
     /**
      * Destroys a session cookie.
@@ -109,5 +140,15 @@ abstract class BaseSessionDriver implements \SessionHandlerInterface
     protected static function false()
     {
         return self::$falseValue;
+    }
+
+    /**
+     * Sets a logger.
+     *
+     * @param LoggerInterface $logger
+     */
+    public function setLogger(LoggerInterface $logger)
+    {
+        $this->logger = $logger;
     }
 }

@@ -11,6 +11,13 @@ namespace FireSessions;
 class SessionFactory
 {
     /**
+     * Available drivers
+     */
+    const FILES_DRIVER = 'Files';
+    const MEMCACHED_DRIVER = 'Memcached';
+    const REDIS_DRIVER = 'Redis';
+
+    /**
      * @var Session Library static instance
      */
     private static $instance;
@@ -25,7 +32,7 @@ class SessionFactory
     public static function getInstance(array $config = null)
     {
         if (self::$instance === null) {
-            return self::$instance = new Session($config);
+            return self::$instance = new Session($config, new DriversFactory(), new SessionWrapper());
         }
 
         return self::$instance;

@@ -2,6 +2,9 @@
 
 namespace FireSessions;
 
+use FireSessions\Exceptions\FireSessionsException;
+use InvalidArgumentException;
+
 /**
  * Session main file
  *
@@ -11,104 +14,107 @@ namespace FireSessions;
  */
 class Session
 {
-    /**
-     * Available drivers
-     */
-    const FILES_DRIVER = 'Files';
-    const MEMCACHED_DRIVER = 'Memcached';
-    const REDIS_DRIVER = 'Redis';
+    /** @deprecated Use the SessionFactory constants instead */
+    const FILES_DRIVER = SessionFactory::FILES_DRIVER;
+
+    /** @deprecated Use the SessionFactory constants instead */
+    const MEMCACHED_DRIVER = SessionFactory::MEMCACHED_DRIVER;
+
+    /** @deprecated Use the SessionFactory constants instead */
+    const REDIS_DRIVER = SessionFactory::REDIS_DRIVER;
+
+    const TEMP_BAG_KEY = '_temp_bag';
+    const FLASHES_BAG_KEY = '_flashes_bag';
+    const LAST_REGENERATE_KEY = '_last_regenerate';
 
     /**
      * @var array Internal session variables
      */
     private static $reservedSessionKeys = array(
-        '_temp_bag',
-        '_flashes_bag',
-        '_last_regenerate',
+        self::TEMP_BAG_KEY,
+        self::FLASHES_BAG_KEY,
+        self::LAST_REGENERATE_KEY,
     );
 
     /**
-     * @var DriversFactory Class for building drivers instances
+     * @var SessionWrapper Class for wrapping PHP session functions
      */
-    private $driversFactory;
+    private $sessionWrapper;
 
     /**
      * Session constructor.
      *
      * @param array $config Configuration array
+     * @param DriversFactory $driversFactory The factory of drivers
+     * @param SessionWrapper $sessionWrapper PHP session functions wrapper
+     * @throws FireSessionsException if the service can't be initialized
      */
-    public function __construct(array $config)
+    public function __construct(array $config, DriversFactory $driversFactory, SessionWrapper $sessionWrapper)
     {
-        if (strpos(PHP_SAPI, 'cli') === 0 || defined('STDIN')) {
-            trigger_error('FireSession cannot start in CLI mode.', E_USER_NOTICE);
+        if (empty($config['skip_init'])) {
+            if (is_cli()) {
+                throw new FireSessionsException('FireSessions cannot start in CLI mode.');
+            }
 
-            return;
-        }
+            if ((bool)ini_get('session.auto_start')) {
+                throw new FireSessionsException('"session.auto_start" INI setting is enabled; FireSessions cannot start.');
+            }
 
-        if ((bool)ini_get('session.auto_start')) {
-            trigger_error('"session.auto_start" INI setting is enabled; FireSession cannot start.', E_USER_ERROR);
+            $this->sessionWrapper = $sessionWrapper;
 
-            return;
-        }
+            try {
+                $config = $this->processConfiguration($config);
+            } catch (\InvalidArgumentException $e) {
+                throw new FireSessionsException('InvalidArgumentException encountered: ' . $e->getMessage(), 0, $e);
+            }
 
-        $this->driversFactory = new DriversFactory();
-
-        $config = $this->processConfiguration($config);
-
-        session_set_cookie_params(
-            $config['cookie_lifetime'],
-            $config['cookie_path'],
-            $config['cookie_domain'],
-            $config['cookie_secure'],
-            true
-        );
-
-        if (!interface_exists('\SessionHandlerInterface')) {
-            class_alias('\FireSessions\SessionHandlerInterface', '\SessionHandlerInterface');
-        }
-
-        /** @var BaseSessionDriver $handler */
-        $handler = $this->driversFactory->build($config['driver'], $config);
-
-        if (version_compare(PHP_VERSION, '5.4.0') >= 0) {
-            session_set_save_handler($handler, true);
-        } else {
-            session_set_save_handler(
-                array($handler, 'open'),
-                array($handler, 'close'),
-                array($handler, 'read'),
-                array($handler, 'write'),
-                array($handler, 'destroy'),
-                array($handler, 'gc')
+            $this->sessionWrapper->setCookieParams(
+                $config['cookie_lifetime'],
+                $config['cookie_path'],
+                $config['cookie_domain'],
+                $config['cookie_secure'],
+                true
             );
 
-            register_shutdown_function('session_write_close');
-        }
+            $handler = $driversFactory->create(
+                isset($config['driver']) ? $config['driver'] : SessionFactory::FILES_DRIVER, $config
+            );
 
-        // Sanitize the cookie, PHP doesn't do that for custom handlers
-        if (isset($_COOKIE[$config['cookie_name']])
-            && (!is_string($_COOKIE[$config['cookie_name']])
-            || !preg_match('#\A' . $config['sid_regexp'] . '\z#', $_COOKIE[$config['cookie_name']]))
-        ) {
-            unset($_COOKIE[$config['cookie_name']]);
-        }
+            if (isset($config['logger'])) {
+                $handler->setLogger($config['logger']);
+            } else {
+                $handler->setLogger(new \Psr\Log\NullLogger());
+            }
 
-        session_start();
+            $this->sessionWrapper->setHandler($handler);
+
+            // Sanitize the cookie, PHP doesn't do that for custom handlers
+            if (isset($_COOKIE[$config['cookie_name']])
+                && (!is_string($_COOKIE[$config['cookie_name']])
+                    || !preg_match('#\A' . $config['sid_regexp'] . '\z#', $_COOKIE[$config['cookie_name']]))
+            ) {
+                unset($_COOKIE[$config['cookie_name']]);
+            }
+
+            $this->sessionWrapper->start();
+        }
 
         // Is session ID auto-regeneration configured? (AJAX requests are ignored)
-        if (!$this->isAjaxRequest() && ($regenerate_time = $config['regenerate_time']) > 0) {
+        if (!is_ajax_request() && ($regenerateTime = $config['regenerate_time']) > 0) {
             $currentTime = time();
 
             if (!isset($_SESSION['_last_regenerate'])) {
                 $_SESSION['_last_regenerate'] = $currentTime;
-            } elseif ($_SESSION['_last_regenerate'] < ($currentTime - $regenerate_time)) {
+            } elseif ($_SESSION['_last_regenerate'] < ($currentTime - $regenerateTime)) {
                 $this->regenerate((bool)$config['destroy_on_regenerate']);
             }
-        } elseif (isset($_COOKIE[$config['cookie_name']]) && $_COOKIE[$config['cookie_name']] === session_id()) {
-            // PHP doesn't seem to send the session cookie unless it is being currently created or regenerated
+        }
+
+        // PHP doesn't seem to send the session cookie unless it is being currently created or regenerated
+        if (isset($_COOKIE[$config['cookie_name']]) && $_COOKIE[$config['cookie_name']] === $this->sessionWrapper->getId()) {
             setcookie(
                 $config['cookie_name'],
-                session_id(),
+                $this->sessionWrapper->getId(),
                 $config['cookie_lifetime'] === 0 ? 0 : $config['cookie_lifetime'] + time(),
                 $config['cookie_path'],
                 $config['cookie_domain'],
@@ -128,13 +134,7 @@ class Session
      */
     public function __get($key)
     {
-        if (array_key_exists($key, $_SESSION)) {
-            return $_SESSION[$key];
-        } elseif ($key === 'session_id') {
-            return session_id();
-        }
-
-        return null;
+        return $this->userdata($key);
     }
 
     /**
@@ -145,11 +145,7 @@ class Session
      */
     public function __isset($key)
     {
-        if ($key === 'session_id') {
-            return (session_status() === PHP_SESSION_ACTIVE);
-        }
-
-        return isset($_SESSION[$key]);
+        return $this->hasUserdata($key);
     }
 
     /**
@@ -160,7 +156,7 @@ class Session
      */
     public function __set($key, $value)
     {
-        $_SESSION[$key] = $value;
+        $this->setUserdata($key, $value);
     }
 
     /**
@@ -172,26 +168,18 @@ class Session
     public function userdata($index = null)
     {
         if ($index !== null) {
-            return isset($_SESSION[$index]) && !in_array($index, self::$reservedSessionKeys)
+            return $this->hasUserdata($index)
                 ? $_SESSION[$index]
                 : null;
         }
 
-        $allUserdata = $_SESSION;
-
-        $exceptions = array_merge(
-            self::$reservedSessionKeys,
-            array_keys($_SESSION['_temp_bag']),
-            array_keys($_SESSION['_flashes_bag'])
+        // Return all session items, excepting flashdata, tempdata and reserved items
+        return array_diff_key(
+            $_SESSION,
+            $this->checkBagIntegrity(self::FLASHES_BAG_KEY) ? $_SESSION[self::FLASHES_BAG_KEY] : array(),
+            $this->checkBagIntegrity(self::TEMP_BAG_KEY) ? $_SESSION[self::TEMP_BAG_KEY] : array(),
+            array_flip(self::$reservedSessionKeys)
         );
-
-        foreach ($allUserdata as $key => $userdata) {
-            if (in_array($key, $exceptions)) {
-                unset($allUserdata[$key]);
-            }
-        }
-
-        return $allUserdata;
     }
 
     /**
@@ -202,20 +190,20 @@ class Session
      */
     public function flashdata($index = null)
     {
-        if (!isset($_SESSION['_flashes_bag'])) {
-            return null;
-        }
-
         if ($index !== null) {
-            return isset($_SESSION[$index]) && in_array($index, array_keys($_SESSION['_flashes_bag']))
+            return $this->checkBagIntegrity(self::FLASHES_BAG_KEY) && $this->isInBag(self::FLASHES_BAG_KEY, $index)
                 ? $_SESSION[$index]
                 : null;
         }
 
+        if (!$this->checkBagIntegrity(self::FLASHES_BAG_KEY)) {
+            return array();
+        }
+
         $allFlashData = array();
 
-        foreach ($_SESSION['_flashes_bag'] as $key => $status) {
-            $allFlashData[] = $_SESSION[$key];
+        foreach (array_keys($_SESSION[self::FLASHES_BAG_KEY]) as $key) {
+            isset($_SESSION[$key]) && $allFlashData[$key] = $_SESSION[$key];
         }
 
         return $allFlashData;
@@ -229,29 +217,27 @@ class Session
      */
     public function tempdata($index = null)
     {
-        if (!isset($_SESSION['_temp_bag'])) {
-            return null;
-        }
-
         if ($index !== null) {
-            return isset($_SESSION[$index]) && in_array($index, array_keys($_SESSION['_temp_bag']))
+            return $this->checkBagIntegrity(self::TEMP_BAG_KEY) && $this->isInBag(self::TEMP_BAG_KEY, $index)
                 ? $_SESSION[$index]
                 : null;
         }
 
+        if (!$this->checkBagIntegrity(self::TEMP_BAG_KEY)) {
+            return array();
+        }
+
         $allTempdata = array();
 
-        foreach ($_SESSION['_temp_bag'] as $key => $expiration) {
-            $allTempdata[] = $_SESSION[$key];
+        foreach (array_keys($_SESSION[self::TEMP_BAG_KEY]) as $key) {
+            isset($_SESSION[$key]) && $allTempdata[$key] = $_SESSION[$key];
         }
 
         return $allTempdata;
     }
 
     /**
-     * Sets a userdata entry.
-     * Can be used to set multiple entries, if $index is an associative array
-     * and $value is null.
+     * Sets one or more userdata entries.
      *
      * @param string|array $index Userdata name or associative array of userdata names and values
      * @param mixed $value Userdata value, or null if $index is array.
@@ -259,18 +245,20 @@ class Session
     public function setUserdata($index, $value = null)
     {
         if (is_array($index)) {
+            $this->checkIfIndexesAreAllowed($index);
+
             foreach ($index as $key => $value) {
                 $_SESSION[$key] = $value;
             }
         } else {
+            $this->checkIfIndexIsAllowed($index);
+
             $_SESSION[$index] = $value;
         }
     }
 
     /**
-     * Sets a flashdata entry.
-     * Can be used to set multiple entries, if $index is an associative array
-     * and $value is null.
+     * Sets one or more flashdata entries.
      *
      * @param string|array $index Flashdata name or associative array of flashdata names and values
      * @param mixed $value Flashdata value, or null if $index is array.
@@ -305,7 +293,11 @@ class Session
      */
     public function hasUserdata($index)
     {
-        return !$this->isFlashdata($index) && !$this->isTempdata($index) && array_key_exists($index, $_SESSION);
+        return
+            !($this->checkBagIntegrity(self::FLASHES_BAG_KEY) && $this->isInBag(self::FLASHES_BAG_KEY, $index)) &&
+            !($this->checkBagIntegrity(self::TEMP_BAG_KEY) && $this->isInBag(self::TEMP_BAG_KEY, $index)) &&
+            !in_array($index, self::$reservedSessionKeys) &&
+            array_key_exists($index, $_SESSION);
     }
 
     /**
@@ -316,7 +308,7 @@ class Session
      */
     public function hasFlashdata($index)
     {
-        return $this->isFlashdata($index);
+        return $this->checkBagIntegrity(self::FLASHES_BAG_KEY) && $this->isInBag(self::FLASHES_BAG_KEY, $index);
     }
 
     /**
@@ -327,7 +319,22 @@ class Session
      */
     public function hasTempdata($index)
     {
-        return $this->isTempdata($index);
+        return $this->checkBagIntegrity(self::TEMP_BAG_KEY) && $this->isInBag(self::TEMP_BAG_KEY, $index);
+    }
+
+    /**
+     * Returns the expiration
+     *
+     * @param $index
+     * @return null
+     */
+    public function getTempdataExpiration($index)
+    {
+        if ($this->hasTempdata($index)) {
+            return ($expiration = $_SESSION[self::TEMP_BAG_KEY][$index] - time()) < 0 ? 0 : $expiration;
+        }
+
+        return null;
     }
 
     /**
@@ -361,14 +368,12 @@ class Session
     {
         if (is_array($index)) {
             foreach ($index as $key) {
-                if (!$this->isFlashdata($key) && !$this->isTempdata($index)) {
+                if ($this->hasUserdata($key)) {
                     unset($_SESSION[$key]);
                 }
             }
-
-            return;
         } else {
-            if (!$this->isFlashdata($index) && !$this->isTempdata($index)) {
+            if ($this->hasUserdata($index)) {
                 unset($_SESSION[$index]);
             }
         }
@@ -381,19 +386,21 @@ class Session
      */
     public function unsetFlashdata($index)
     {
-        if (is_array($index)) {
-            foreach ($index as $key) {
-                if ($this->isFlashdata($key)) {
-                    unset($_SESSION['_flashes_bag'][$key], $_SESSION[$key]);
-                }
-            }
-        } elseif ($this->isFlashdata($index)) {
-            unset($_SESSION['_flashes_bag'][$index], $_SESSION[$index]);
+        if (!$this->checkBagIntegrity(self::FLASHES_BAG_KEY)) {
+            return;
         }
 
-        if ($_SESSION['_flashes_bag'] === array()) {
-            unset($_SESSION['_flashes_bag']);
+        if (is_array($index)) {
+            foreach ($index as $key) {
+                if ($this->isInBag(self::FLASHES_BAG_KEY, $key)) {
+                    unset($_SESSION[self::FLASHES_BAG_KEY][$key], $_SESSION[$key]);
+                }
+            }
+        } elseif ($this->isInBag(self::FLASHES_BAG_KEY, $index)) {
+            unset($_SESSION[self::FLASHES_BAG_KEY][$index], $_SESSION[$index]);
         }
+
+        $this->cleanupBag(self::FLASHES_BAG_KEY);
     }
 
     /**
@@ -403,19 +410,21 @@ class Session
      */
     public function unsetTempdata($index)
     {
-        if (is_array($index)) {
-            foreach ($index as $key) {
-                if ($this->isTempdata($key)) {
-                    unset($_SESSION['_temp_bag'][$key], $_SESSION[$key]);
-                }
-            }
-        } elseif ($this->isTempdata($index)) {
-            unset($_SESSION['_temp_bag'][$index], $_SESSION[$index]);
+        if (!$this->checkBagIntegrity(self::TEMP_BAG_KEY)) {
+            return;
         }
 
-        if ($_SESSION['_temp_bag'] === array()) {
-            unset($_SESSION['_temp_bag']);
+        if (is_array($index)) {
+            foreach ($index as $key) {
+                if ($this->isInBag(self::TEMP_BAG_KEY, $key)) {
+                    unset($_SESSION[self::TEMP_BAG_KEY][$key], $_SESSION[$key]);
+                }
+            }
+        } elseif ($this->isInBag(self::TEMP_BAG_KEY, $index)) {
+            unset($_SESSION[self::TEMP_BAG_KEY][$index], $_SESSION[$index]);
         }
+
+        $this->cleanupBag(self::TEMP_BAG_KEY);
     }
     
     /**
@@ -423,7 +432,7 @@ class Session
      */
     public function destroy()
     {
-        session_destroy();
+        return $this->sessionWrapper->destroy();
     }
 
     /**
@@ -434,7 +443,7 @@ class Session
     public function regenerate($destroy = true)
     {
         $_SESSION['_last_regenerate'] = time();
-        session_regenerate_id($destroy);
+        $this->sessionWrapper->regenerateId($destroy);
     }
 
     /**
@@ -444,29 +453,31 @@ class Session
      */
     private function markAsFlash($index)
     {
-        if (!isset($_SESSION['_flashes_bag'])) {
-            $_SESSION['_flashes_bag'] = array();
+        if (!$this->checkBagIntegrity(self::FLASHES_BAG_KEY)) {
+            $_SESSION[self::FLASHES_BAG_KEY] = array();
         }
 
         if (is_array($index)) {
             foreach ($index as $key) {
                 if (isset($_SESSION[$key])) {
-                    $_SESSION['_flashes_bag'][$key] = 1;
+                    // If it's a temp, then it will be converted to flash
+                    $this->removeFromBag(self::TEMP_BAG_KEY, $key);
+                    $_SESSION[self::FLASHES_BAG_KEY][$key] = 1;
                 }
             }
         } else {
             if (isset($_SESSION[$index])) {
-                $_SESSION['_flashes_bag'][$index] = 1;
+                // Same as above
+                $this->removeFromBag(self::TEMP_BAG_KEY, $index);
+                $_SESSION[self::FLASHES_BAG_KEY][$index] = 1;
             }
         }
 
-        if ($_SESSION['_flashes_bag'] === array()) {
-            unset($_SESSION['_flashes_bag']);
-        }
+        $this->cleanupBag(self::FLASHES_BAG_KEY);
     }
 
     /**
-     * Adds one or more userdata to temp bag.
+     * Marks one or more userdata as temp.
      *
      * @param string|array $index One or more userdata index(es)
      * @param int|array $ttl One generic or more TTLs
@@ -477,25 +488,28 @@ class Session
             if (is_array($ttl)) {
                 foreach ($index as $key) {
                     if (isset($_SESSION[$key])) {
-                        $_SESSION['_temp_bag'][$key] = time() + $ttl[$key];
+                        // If it's a flash, then it will be converted to temp
+                        $this->removeFromBag(self::FLASHES_BAG_KEY, $key);
+                        $_SESSION[self::TEMP_BAG_KEY][$key] = time() + $ttl[$key];
                     }
                 }
             } else {
                 foreach ($index as $key) {
                     if (isset($_SESSION[$key])) {
-                        $_SESSION['_temp_bag'][$key] = time() + $ttl;
+                        // Same as above
+                        $this->removeFromBag(self::FLASHES_BAG_KEY, $key);
+                        $_SESSION[self::TEMP_BAG_KEY][$key] = time() + $ttl;
                     }
                 }
             }
         } else {
             if (isset($_SESSION[$index])) {
-                $_SESSION['_temp_bag'][$index] = time() + $ttl;
+                $this->removeFromBag(self::FLASHES_BAG_KEY, $index);
+                $_SESSION[self::TEMP_BAG_KEY][$index] = time() + $ttl;
             }
         }
 
-        if ($_SESSION['_temp_bag'] === array()) {
-            unset($_SESSION['_temp_bag']);
-        }
+        $this->cleanupBag(self::TEMP_BAG_KEY);
     }
 
     /**
@@ -506,25 +520,23 @@ class Session
      */
     private function processConfiguration(array $config)
     {
-        // Expiration default
+        // Expiration time
         $config['expiration'] = isset($config['expiration']) ? (int)$config['expiration'] : 7200;
 
         // Cookie lifetime (0 = expire on exiting)
         $config['cookie_lifetime'] = $config['expiration'];
 
         // Cookie name
-        if (isset($config['cookie_name'])) {
-            ini_set('session.name', (string)$config['cookie_name']);
-        } else {
-            $config['cookie_name'] = 'fs_session';
-            ini_set('session.name', $config['cookie_name']);
+        if (!isset($config['cookie_name'])) {
+            $config['cookie_name'] = 'SESSIONID';
         }
+
+        ini_set('session.name', $config['cookie_name']);
 
         // Cookie path, domain and HTTPs trigger
         $config['cookie_path'] = isset($config['cookie_path']) ? $config['cookie_path'] : '/';
         $config['cookie_domain'] = isset($config['cookie_domain']) ? $config['cookie_domain'] : '';
         $config['cookie_secure'] = isset($config['cookie_secure']) ? (bool)$config['cookie_secure'] : false;
-
 
         if ($config['expiration'] === 0) {
             $config['expiration'] = (int)ini_get('session.gc_maxlifetime');
@@ -535,7 +547,7 @@ class Session
         $config['destroy_on_regenerate'] = isset($config['destroy_on_regenerate']) ? (bool)$config['destroy_on_regenerate'] : false;
         $config['regenerate_time'] = isset($config['regenerate_time']) ? (int)$config['regenerate_time'] : 300;
         $config['match_ip'] = isset($config['match_ip']) ? (bool)$config['match_ip'] : false;
-        $config['save_path'] = isset($config['save_path']) ? $config['save_path'] : session_save_path();
+        $config['save_path'] = isset($config['save_path']) ? $config['save_path'] : $this->sessionWrapper->sessionSavePath();
 
         // Security considerations for INI
         ini_set('session.use_trans_sid', 0);
@@ -550,27 +562,24 @@ class Session
 
     /**
      * Computes the sid length according to PHP installation.
-     * Sets the sid_regex setting value in $config.
      *
      * @param array $config Associative array of settings
      * @return array Modified array of settings
      */
     private function computeSidLength(array $config)
     {
+        // If we are running a lower version than 7.1,
+        // then the INI setting session.hash_function is our bet
         if (PHP_VERSION_ID < 70100) {
             $hashFunction = ini_get('session.hash_function');
-            if (ctype_digit($hashFunction)) {
-                if ($hashFunction !== '1') {
-                    ini_set('session.hash_function', 1);
-                }
+            $bits = 160;
 
-                $bits = 160;
+            if (ctype_digit($hashFunction) && $hashFunction !== '1') {
+                ini_set('session.hash_function', 1);
             } elseif (!in_array($hashFunction, hash_algos(), true)) {
                 ini_set('session.hash_function', 1);
-                $bits = 160;
             } elseif (($bits = strlen(hash($hashFunction, 'dummy', false)) * 4) < 160) {
                 ini_set('session.hash_function', 1);
-                $bits = 160;
             }
 
             $bitsPerCharacter = (int)ini_get('session.hash_bits_per_character');
@@ -579,9 +588,10 @@ class Session
             $bitsPerCharacter = (int)ini_get('session.sid_bits_per_character');
             $sidLength = (int)ini_get('session.sid_length');
             if (($bits = $sidLength * $bitsPerCharacter) < 160) {
+
                 // Add as many more characters as necessary to reach at least 160 bits
                 $sidLength += (int)ceil((160 % $bits) / $bitsPerCharacter);
-                ini_set('session.sid_length', $sidLength);
+                ini_set('session.sid_length', (string)$sidLength);
             }
         }
 
@@ -610,65 +620,105 @@ class Session
     {
         // Flashes
         // Possible status values: -1: to be removed; 0: to be consumed; 1: just set
-        if (isset($_SESSION['_flashes_bag'])) {
-            foreach ($_SESSION['_flashes_bag'] as $key => $status) {
+        if (isset($_SESSION[self::FLASHES_BAG_KEY])) {
+            foreach ($_SESSION[self::FLASHES_BAG_KEY] as $key => $status) {
                 $status--;
 
                 if ($status === -1) {
-                    unset($_SESSION['_flashes_bag'][$key], $_SESSION[$key]);
+                    unset($_SESSION[self::FLASHES_BAG_KEY][$key], $_SESSION[$key]);
                 } else {
-                    $_SESSION['_flashes_bag'][$key] = $status;
+                    $_SESSION[self::FLASHES_BAG_KEY][$key] = $status;
                 }
             }
 
-            if ($_SESSION['_flashes_bag'] === array()) {
-                unset($_SESSION['_flashes_bag']);
-            }
+            $this->cleanupBag(self::FLASHES_BAG_KEY);
         }
 
         // Tempdata
-        if (isset($_SESSION['_temp_bag'])) {
+        if (isset($_SESSION[self::TEMP_BAG_KEY])) {
             $currentTime = time();
 
-            foreach ($_SESSION['_temp_bag'] as $key => $expiration) {
+            foreach ($_SESSION[self::TEMP_BAG_KEY] as $key => $expiration) {
                 if ($expiration < $currentTime) {
-                    unset($_SESSION['_temp_bag'][$key], $_SESSION[$key]);
+                    unset($_SESSION[self::TEMP_BAG_KEY][$key], $_SESSION[$key]);
                 }
             }
 
-            if ($_SESSION['_temp_bag'] === array()) {
-                unset($_SESSION['_temp_bag']);
-            }
+            $this->cleanupBag(self::TEMP_BAG_KEY);
         }
     }
 
     /**
-     * Check if a session var is flashdata or not.
+     * Check if a given string it's not a reserved keyword.
      *
-     * @param mixed $index Key of the session variable
-     * @return bool
+     * @param string $index
+     * @throws InvalidArgumentException
      */
-    private function isFlashdata($index)
+    private function checkIfIndexIsAllowed($index)
     {
-        return isset($_SESSION['_flashes_bag']) && array_key_exists($index, $_SESSION['_flashes_bag']);
+        if (in_array($index, self::$reservedSessionKeys)) {
+            throw new InvalidArgumentException("$index is a reserved key");
+        }
     }
 
     /**
-     * Check if a session var is tempdata or not.
+     * Checks for an array of strings if any of them is not a reserved keyword.
      *
-     * @param mixed $index Key of the session variable
-     * @return bool
+     * @param array $indexes
+     * @throws InvalidArgumentException
      */
-    private function isTempdata($index)
+    private function checkIfIndexesAreAllowed(array $indexes)
     {
-        return isset($_SESSION['_temp_bag']) && array_key_exists($index, $_SESSION['_temp_bag']);
+        if (count(array_intersect($indexes, self::$reservedSessionKeys)) > 0) {
+            throw new InvalidArgumentException('At least one key of the provided array is a reserved key');
+        }
     }
 
     /**
-     * @return bool Whether the current request is performed through AJAX or not
+     * Unsets the bag's data array if it's empty.
+     *
+     * @param string $bagKey
      */
-    private function isAjaxRequest()
+    private function cleanupBag($bagKey)
     {
-        return !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+        if (isset($_SESSION[$bagKey]) && $_SESSION[$bagKey] === array()) {
+            unset($_SESSION[$bagKey]);
+        }
+    }
+    
+    /**
+     * Checks, for a given bag name, that its data array exists and it's an array.
+     *
+     * @param string $bagKey
+     * @return bool
+     */
+    private function checkBagIntegrity($bagKey)
+    {
+        return isset($_SESSION[$bagKey]) && is_array($_SESSION[$bagKey]);
+    }
+
+    /**
+     * @param string $bagKey
+     * @param string $index
+     */
+    private function removeFromBag($bagKey, $index)
+    {
+        if ($this->checkBagIntegrity($bagKey) && $this->isInBag($bagKey, $index)) {
+            unset($_SESSION[$bagKey][$index]);
+        }
+
+        $this->cleanupBag($bagKey);
+    }
+
+    /**
+     * Checks if a given session entry is in a bag.
+     *
+     * @param string $bagKey The bag key in _SESSION global
+     * @param mixed $index Key of the session variable
+     * @return bool
+     */
+    private function isInBag($bagKey, $index)
+    {
+        return array_key_exists($index, $_SESSION[$bagKey]);
     }
 }

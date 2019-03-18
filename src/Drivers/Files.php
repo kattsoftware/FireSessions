@@ -28,9 +28,7 @@ class Files extends BaseSessionDriver
     private $isNewCreated;
 
     /**
-     * Files driver constructor.
-     *
-     * @param array $config
+     * {@inheritdoc}
      */
     public function __construct(array $config)
     {
@@ -57,14 +55,20 @@ class Files extends BaseSessionDriver
     {
         if (!is_dir($savePath)) {
             if (!@mkdir($savePath, 0700, true)) {
-                trigger_error(__CLASS__ . ': "' . $savePath . '" is not a directory, doesn\'t exist or cannot be created.', E_USER_ERROR);
+                $this->logger->critical(
+                    '{sessionHandler}: The session save path is not a directory, does not exist or cannot be created',
+                    array('savePath' => $savePath, 'sessionName' => $name, 'sessionHandler' => __CLASS__)
+                );
 
                 return self::false();
             }
         }
 
         if (!@is_writable($savePath)) {
-            trigger_error(__CLASS__ . ': "' . $savePath . '" is not writable by the PHP executable.', E_USER_ERROR);
+            $this->logger->critical(
+                '{sessionHandler}: The session save path is not writable by the PHP script',
+                array('savePath' => $savePath, 'sessionName' => $name, 'sessionHandler' => __CLASS__)
+            );
 
             return self::false();
         }
@@ -73,6 +77,8 @@ class Files extends BaseSessionDriver
 
         $this->fullPathPrefix = $this->config['save_path'] . DIRECTORY_SEPARATOR
             . $name . ($this->config['match_ip'] ? md5($this->getIp()) : '');
+
+        $this->php5ValidateId();
 
         return self::true();
     }
@@ -97,14 +103,21 @@ class Files extends BaseSessionDriver
             $this->fileHandler = @fopen($fullPath, 'c+b');
 
             if ($this->fileHandler === false) {
-                trigger_error(__CLASS__ . ': Unable to open the session file: ' . $fullPath, E_USER_ERROR);
+                $this->logger->error(
+                    '{sessionHandler}: The session file cannot be opened',
+                    array('sessionId' => $sessionId, 'sessionFile' => $fullPath, 'sessionHandler' => __CLASS__)
+                );
 
                 return self::false();
             }
 
             // File opened, trying to acquire a lock on it
             if ($this->acquireLock() === false) {
-                trigger_error(__CLASS__ . ': Unable to acquire a lock for ' . $fullPath, E_USER_ERROR);
+                $this->logger->error(
+                    '{sessionHandler}: Unable to acquire the session lock',
+                    array('sessionId' => $sessionId, 'sessionFile' => $fullPath, 'sessionHandler' => __CLASS__)
+                );
+
                 fclose($this->fileHandler);
                 $this->fileHandler = null;
 
@@ -182,7 +195,10 @@ class Files extends BaseSessionDriver
 
             if (!is_int($result)) {
                 $this->sessionDataChecksum = md5('');
-                trigger_error(__CLASS__ . ': Unable to write session data to ' . $fullPath, E_USER_ERROR);
+                $this->logger->error(
+                    'Unable to write the session data',
+                    array('sessionId' => $sessionId, 'sessionFile' => $fullPath, 'sessionDataLength' => $length, 'sessionHandler' => __CLASS__)
+                );
 
                 return self::false();
             }
@@ -255,7 +271,10 @@ class Files extends BaseSessionDriver
 
         if ( ! is_dir($this->config['save_path']) || $directory === FALSE)
         {
-            trigger_error(__CLASS__ . ': gc couldn\'t list the directory ' . $this->config['save_path'], E_USER_NOTICE);
+            $this->logger->warning(
+                'Garbage collector could not open the session path',
+                array('sessionPath' => $this->config['save_path'], 'sessionHandler' => __CLASS__)
+            );
 
             return self::false();
         }
@@ -303,5 +322,16 @@ class Files extends BaseSessionDriver
     protected function releaseLock()
     {
         return flock($this->fileHandler, LOCK_UN);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function validateSessionId($sessionId)
+    {
+        $result = is_file($this->fullPathPrefix . $sessionId);
+        clearstatcache(true, $this->fullPathPrefix . $sessionId);
+
+        return $result;
     }
 }

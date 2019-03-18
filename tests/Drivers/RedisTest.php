@@ -4,27 +4,12 @@ namespace FireSessions\Tests\Drivers;
 
 use FireSessions\Drivers\Redis as RedisDriver;
 
-class RedisTest extends \PHPUnit_Framework_TestCase
+class RedisTest extends BaseDriverTest
 {
-    private static $true;
-
-    private static $false;
-
     /**
      * @var \PHPUnit_Framework_MockObject_MockObject|\Redis
      */
     private $redisMock;
-
-    public static function setUpBeforeClass()
-    {
-        if (version_compare(PHP_VERSION, '7.0.0') >= 0) {
-            self::$true = true;
-            self::$false = false;
-        } else {
-            self::$true = 0;
-            self::$false = -1;
-        }
-    }
 
     public function setUp()
     {
